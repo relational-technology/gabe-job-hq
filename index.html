@@ -51,6 +51,10 @@ select.status{font-weight:700;font-size:13px;padding:8px 10px;border-radius:8px;
 details{margin-top:10px}summary{cursor:pointer;color:var(--teal);font-weight:700;font-size:13px}
 pre.tpl{white-space:pre-wrap;background:var(--wash);border-radius:8px;padding:10px;font-size:12.5px;margin-top:8px;font-family:inherit}
 .closedwrap summary{color:var(--grey)}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.controls select{font-size:13px;font-weight:700;padding:9px 11px;border-radius:8px;border:1px solid var(--line);color:var(--ink);background:#fff}
+.tl{margin-top:10px;font-size:12px;color:var(--grey);display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.tl b{color:var(--teal)}
 </style></head><body>
 <div class="gate" id="gate">
   <h1><span class="g">Gabe</span> Paoli - Job HQ</h1>
@@ -119,14 +123,31 @@ async function dash(){
     <p class="hint">${ready} role${ready===1?'':'s'} waiting. Open <b>Jobs</b> to apply. The list refreshes automatically each day.</p>`;
 }
 const STATUSES=['ready','applied','interviewing','rejected','archived'];
+let JFILTER='active',JSORT='recent';
+const fmtd=s=>{if(!s)return'';const d=new Date(String(s).replace(' ','T')+'Z');return isNaN(d)?'':d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});};
+function setFilter(v){JFILTER=v;renderJobs();}
+function setSort(v){JSORT=v;renderJobs();}
 async function jobs(){
-  const rows=await tq("SELECT *, (first_seen>(SELECT v FROM meta WHERE k='prev_run')) isnew FROM jobs WHERE status NOT IN('closed','archived') ORDER BY (status='applied'), fit DESC, company");
-  const closed=await tq("SELECT company,role,closed_at FROM jobs WHERE status='closed' ORDER BY closed_at DESC LIMIT 25");
-  const el=document.getElementById('jobs');el.innerHTML=rows.length?'':'<p class="muted">No live roles right now. Check back after the daily refresh.</p>';
+  document.getElementById('jobs').innerHTML=`<div class="controls">
+    <select id="fsel" onchange="setFilter(this.value)"><option value="active">All active</option><option value="ready">Ready</option><option value="applied">Applied</option><option value="interviewing">Interviewing</option><option value="rejected">Rejected</option><option value="archived">Archived</option><option value="closed">Closed</option></select>
+    <select id="ssel" onchange="setSort(this.value)"><option value="recent">Recent activity</option><option value="oldest">Oldest activity</option><option value="fit">Best fit</option></select>
+  </div><div id="joblist"></div>`;
+  document.getElementById('fsel').value=JFILTER;document.getElementById('ssel').value=JSORT;
+  await renderJobs();
+}
+async function renderJobs(){
+  const where=JFILTER==='active'?"status NOT IN('archived','closed')":"status='"+JFILTER+"'";
+  const order=JSORT==='recent'?"updated_at DESC, first_seen DESC":JSORT==='oldest'?"updated_at ASC":"fit DESC, company";
+  const rows=await tq("SELECT *, (first_seen>(SELECT v FROM meta WHERE k='prev_run')) isnew FROM jobs WHERE "+where+" ORDER BY "+order);
+  const evs=await tq("SELECT job_id,status,at FROM events ORDER BY at");
+  const em={};evs.forEach(e=>{(em[e.job_id]=em[e.job_id]||[]).push(e);});
+  const list=document.getElementById('joblist');list.innerHTML=rows.length?'':'<p class="muted">No jobs in this view.</p>';
   for(const j of rows){
     let pk={};try{pk=JSON.parse(j.pack||'{}')}catch(e){}
     const opts=STATUSES.map(s=>`<option value="${s}" ${s===j.status?'selected':''}>${s[0].toUpperCase()+s.slice(1)}</option>`).join('');
     const contacts=(pk.contacts||[]).map(c=>`<div class="muted">${c[0]} - ${c[1]} &nbsp; <a href="https://${(c[2]||'').replace(/^https?:\/\//,'')}" target="_blank">profile</a></div>`).join('')||`<div class="muted">${pk.recipe||''}</div>`;
+    const tl=['<span>Found '+fmtd(j.first_seen)+'</span>'].concat((em[j.id]||[]).map(e=>'<span><b>'+e.status[0].toUpperCase()+e.status.slice(1)+'</b> '+fmtd(e.at)+'</span>'));
+    if(j.status==='closed'&&j.closed_at)tl.push('<span><b>Closed</b> '+fmtd(j.closed_at)+'</span>');
     const d=document.createElement('div');d.className='card';
     d.innerHTML=`<div class="top"><div><div class="co">${j.company}</div><div class="ro">${j.role} ${(+j.isnew)?'<span class="new">New</span>':''}</div></div><span class="fit">Fit ${(+j.fit).toFixed(0)}/10</span></div>
       <div class="row"><span class="badge ${j.status}">${j.status}</span>
@@ -135,16 +156,14 @@ async function jobs(){
         ${pk.dm?`<button class="btn" onclick='copy(${JSON.stringify(pk.dm)},"DM")'>Copy DM</button>`:''}
         <select class="status" onchange="setStatus('${j.id}',this.value)">${opts}</select>
       </div>
+      <div class="tl">${tl.join(' &middot; ')}</div>
       <details><summary>Who to contact + how to apply</summary>${contacts}
         ${pk.steps?'<pre class="tpl">'+pk.steps.map((s,i)=>(i+1)+'. '+s.replace(/<[^>]+>/g,'')).join('\n')+'</pre>':''}
         ${pk.letter?'<pre class="tpl">'+pk.letter+'</pre>':''}</details>`;
-    el.appendChild(d);
+    list.appendChild(d);
   }
-  if(closed.length){const w=document.createElement('div');w.className='closedwrap';
-    w.innerHTML='<details><summary>Recently closed ('+closed.length+')</summary>'+closed.map(c=>`<div class="muted">${c.company} - ${c.role} <span class="badge closed">closed</span> ${(c.closed_at||'').slice(0,10)}</div>`).join('')+'</details>';
-    el.appendChild(w);}
 }
-async function setStatus(id,st){await tq("UPDATE jobs SET status=?,updated_at=datetime('now'),applied_at=CASE WHEN ?='applied' THEN datetime('now') ELSE applied_at END WHERE id=?",[st,st,id]);toast('Saved: '+st);dash();jobs();}
+async function setStatus(id,st){await tq("UPDATE jobs SET status=?,updated_at=datetime('now'),applied_at=CASE WHEN ?='applied' THEN datetime('now') ELSE applied_at END WHERE id=?",[st,st,id]);await tq("INSERT INTO events(job_id,status,at) VALUES(?,?,datetime('now'))",[id,st]);toast('Saved: '+st);dash();renderJobs();}
 async function docs(){
   const rows=await tq("SELECT id,name,descr,mime FROM docs ORDER BY rowid");
   document.getElementById('docs').innerHTML='<p class="hint">Your latest documents (private, stored encrypted). Tap to download. Use the ATS .docx for portals; branded PDFs for humans.</p>'+
