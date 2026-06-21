@@ -30,11 +30,12 @@ def tq(sql,args=None):
     rr=res["response"]["result"]
     return [{c["name"]:(row[i].get("value") if isinstance(row[i],dict) else row[i]) for i,c in enumerate(rr["cols"])} for row in rr["rows"]]
 
-PROFILE=("Gabe Paoli, senior producer, 15+ years. Senior Producer and Deputy Head of Film at IDX (Investcorp), London. "
- "Flagship: produced Rolls-Royce 'Spirit of Innovation', the world-record all-electric aircraft launch: 25M+ reach, "
- "500+ press placements in 72 hours, now a permanent Science Museum exhibition. Brands: Vodafone, Spotify, Nike, Bvlgari, Vogue. "
- "Budgets up to 2M pounds; 500+ campaigns delivered; grew client revenue 700%+. Runs work from first pitch to same-day global "
- "launch across production, creative, marketing and AI tooling. Right to work UK and EU, no sponsorship. London-based.")
+PROFILE=("Gabe Paoli, senior producer and content-operations lead, 15+ years. Senior Producer and Deputy Head of Film at IDX "
+ "(Investcorp), London. Delivers integrated film, branded content and social at scale for global brands (Vodafone, Nike, "
+ "Under Armour, Vogue), owning budgets up to 2M pounds across 500+ campaigns and 20+ markets, with reusable production systems "
+ "and AI-supported workflows that hold quality at volume. Runs work from pitch to same-day global launch across production, "
+ "creative, marketing and executive comms. One standout: produced Rolls-Royce's record-breaking Spirit of Innovation launch "
+ "(25M+ reach). Right to work UK and EU, no sponsorship. London-based, one month notice.")
 
 def claude(prompt):
     if not OAUTH: raise RuntimeError("no CLAUDE_OAUTH_TOKEN")

@@ -130,11 +130,11 @@ async function dash(){
     <p class="hint">${ready} role${ready===1?'':'s'} waiting. Open <b>Jobs</b> to apply. The list refreshes automatically each day.</p>`;
 }
 const STATUSES=['ready','applied','interviewing','rejected','archived'];
-let JFILTER='active',JSORT='best',JREC='any';
+let JFILTER='active',JSORT='best',JREC='7d';
 const fmtd=s=>{if(!s)return'';const d=new Date(String(s).replace(' ','T')+'Z');return isNaN(d)?'':d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});};
 function postedLabel(j){const raw=j.posted||j.first_seen;if(!raw)return'';const d=new Date(String(raw).replace(' ','T'));if(isNaN(d))return'';const days=Math.floor((Date.now()-d.getTime())/864e5);const t=days<=0?'today':days===1?'1 day ago':days+' days ago';return(j.posted?'Posted ':'Added ')+t;}
-const genLetter=(co,ro)=>`Dear ${co} team,\n\nI am applying for the ${ro} role. I am a senior producer with 15+ years making film, branded content and social for brands like Rolls-Royce, Vodafone, Spotify and Nike. I run work from first pitch to same-day global launch, own budgets up to 2M pounds, and keep craft high as volume scales.\n\nMost recently I produced Rolls-Royce's world-record electric-aircraft launch: 25M+ reach and 500+ press placements in 72 hours, now a permanent Science Museum exhibition. I would bring that mix of production rigour, creative judgement and calm delivery to ${co}.\n\nI would love to talk.\n\nBest,\nGabe Paoli`;
-const genDM=(co,ro)=>`Hi [NAME], quick hello. I produce film and branded content (Rolls-Royce, Vodafone, Spotify, Nike) and I have just applied for the ${ro} role at ${co}. Happy to share my reel and a one-pager. Would love to be considered.`;
+const genLetter=(co,ro)=>`Dear ${co} team,\n\nI am applying for the ${ro} role. I am a senior producer with 15+ years delivering integrated film, branded content and social at scale for global brands like Vodafone, Nike and Vogue. I own budgets up to 2M pounds across 500+ campaigns and 20+ markets, and build the production systems and AI-supported workflows that keep quality high as volume grows.\n\nOne standout: I produced Rolls-Royce's record-breaking Spirit of Innovation launch (25M+ reach). I would bring that mix of operational rigour, creative judgement and calm delivery to ${co}.\n\nI am London-based and available on one month notice, and would love to talk.\n\nBest,\nGabe Paoli`;
+const genDM=(co,ro)=>`Hi [NAME], quick hello. I produce film and branded content at scale for global brands (Vodafone, Nike, Vogue) and have just applied for the ${ro} role at ${co}. Happy to share my reel and a one-pager. Would love to connect.`;
 function setFilter(v){JFILTER=v;renderJobs();}
 function setSort(v){JSORT=v;renderJobs();}
 function setRec(v){JREC=v;renderJobs();}
