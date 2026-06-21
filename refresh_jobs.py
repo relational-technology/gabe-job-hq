@@ -68,11 +68,19 @@ def scan(page):
         try:
             page.goto(url,wait_until="domcontentloaded",timeout=30000); page.wait_for_timeout(700)
             html=page.content()
-            for jid,title,company,locn in re.findall(r'data-entity-urn="urn:li:jobPosting:(\d+)".*?base-search-card__title">\s*([^<]+?)\s*</h3>.*?subtitle">\s*<a[^>]*>\s*([^<]+?)\s*</a>.*?location">\s*([^<]+?)\s*</span>',html,re.S):
+            for chunk in re.split(r'<li[ >]',html):
+                m=re.search(r'urn:li:jobPosting:(\d+)',chunk)
+                if not m: continue
+                jid=m.group(1)
+                tt=re.search(r'base-search-card__title">\s*([^<]+?)\s*<',chunk)
+                cc=re.search(r'base-search-card__subtitle">\s*(?:<a[^>]*>)?\s*([^<]+?)\s*<',chunk)
+                dd=re.search(r'datetime="([^"]+)"',chunk)
+                if not tt: continue
+                title=tt.group(1).strip().replace('&amp;','&')
                 f=fit(title)
                 if f is None: continue
-                found[jid]={"id":"li-"+jid,"jobid":jid,"company":company.strip().replace('&amp;','&'),
-                            "role":title.strip().replace('&amp;','&'),"fit":f,"url":f"https://www.linkedin.com/jobs/view/{jid}"}
+                found[jid]={"id":"li-"+jid,"jobid":jid,"company":(cc.group(1).strip().replace('&amp;','&') if cc else ''),
+                            "role":title,"fit":f,"url":f"https://www.linkedin.com/jobs/view/{jid}","posted":(dd.group(1) if dd else "")}
         except Exception as e:
             print("scan warn",kw,str(e)[:60])
     return list(found.values())
@@ -91,17 +99,17 @@ def main():
                 jd=fetch_jd(page,r["jobid"]);
                 if jd: fetched+=1
             if jd:
-                tq("INSERT INTO jobs(id,company,role,fit,url,status,source,jd,first_seen,last_seen) "
-                   "VALUES(?,?,?,?,?,'ready','linkedin',?,datetime('now'),datetime('now')) "
-                   "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, jd=excluded.jd, "
+                tq("INSERT INTO jobs(id,company,role,fit,url,status,source,jd,posted,first_seen,last_seen) "
+                   "VALUES(?,?,?,?,?,'ready','linkedin',?,?,datetime('now'),datetime('now')) "
+                   "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, jd=excluded.jd, posted=excluded.posted, "
                    "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
-                   [T(r["id"]),T(r["company"]),T(r["role"]),F(r["fit"]),T(r["url"]),T(jd)])
+                   [T(r["id"]),T(r["company"]),T(r["role"]),F(r["fit"]),T(r["url"]),T(jd),T(r.get("posted",""))])
             else:
-                tq("INSERT INTO jobs(id,company,role,fit,url,status,source,first_seen,last_seen) "
-                   "VALUES(?,?,?,?,?,'ready','linkedin',datetime('now'),datetime('now')) "
-                   "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, "
+                tq("INSERT INTO jobs(id,company,role,fit,url,status,source,posted,first_seen,last_seen) "
+                   "VALUES(?,?,?,?,?,'ready','linkedin',?,datetime('now'),datetime('now')) "
+                   "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, posted=excluded.posted, "
                    "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
-                   [T(r["id"]),T(r["company"]),T(r["role"]),F(r["fit"]),T(r["url"])])
+                   [T(r["id"]),T(r["company"]),T(r["role"]),F(r["fit"]),T(r["url"]),T(r.get("posted",""))])
         b.close()
     # target companies (incl big tech) via verified careers endpoints (urllib, no browser)
     ok_sources=set(); croles=[]
@@ -111,15 +119,15 @@ def main():
         cid="co-"+r["source"]+"-"+hashlib.md5((r.get("url") or r["role"]).encode()).hexdigest()[:10]
         fitv=fit(r["role"]) or 7.0
         if r.get("jd"):
-            tq("INSERT INTO jobs(id,company,role,fit,url,status,source,jd,first_seen,last_seen) VALUES(?,?,?,?,?,'ready',?,?,datetime('now'),datetime('now')) "
-               "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, jd=excluded.jd, "
+            tq("INSERT INTO jobs(id,company,role,fit,url,status,source,jd,posted,first_seen,last_seen) VALUES(?,?,?,?,?,'ready',?,?,?,datetime('now'),datetime('now')) "
+               "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, jd=excluded.jd, posted=excluded.posted, "
                "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
-               [T(cid),T(r["company"]),T(r["role"]),F(fitv),T(r["url"]),T(r["source"]),T(r["jd"])])
+               [T(cid),T(r["company"]),T(r["role"]),F(fitv),T(r["url"]),T(r["source"]),T(r["jd"]),T(r.get("posted",""))])
         else:
-            tq("INSERT INTO jobs(id,company,role,fit,url,status,source,first_seen,last_seen) VALUES(?,?,?,?,?,'ready',?,datetime('now'),datetime('now')) "
-               "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, "
+            tq("INSERT INTO jobs(id,company,role,fit,url,status,source,posted,first_seen,last_seen) VALUES(?,?,?,?,?,'ready',?,?,datetime('now'),datetime('now')) "
+               "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, posted=excluded.posted, "
                "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
-               [T(cid),T(r["company"]),T(r["role"]),F(fitv),T(r["url"]),T(r["source"])])
+               [T(cid),T(r["company"]),T(r["role"]),F(fitv),T(r["url"]),T(r["source"]),T(r.get("posted",""))])
     # reconcile: close vanished roles only for sources that actually responded this run
     reconc=set(ok_sources)
     if len(rolesnow)>=5: reconc.add("linkedin")

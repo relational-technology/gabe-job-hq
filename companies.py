@@ -3,7 +3,15 @@
 {source, company, role, url, location, jd}; ok is True if the source responded so the
 caller knows it is safe to reconcile-close that source's vanished roles. Endpoints verified
 2026-06. Filters to London + producer/creative/content/film leadership titles. No em dashes."""
-import re, json, urllib.request, urllib.parse
+import re, json, datetime, urllib.request, urllib.parse
+def _ms(ms):
+    try: return datetime.datetime.utcfromtimestamp(int(ms)/1000).strftime('%Y-%m-%d')
+    except Exception: return ""
+def _rss_date(s):
+    for f in ("%a, %d %b %Y %H:%M:%S %z","%a, %d %b %Y %H:%M:%S %Z"):
+        try: return datetime.datetime.strptime(s.strip(),f).strftime('%Y-%m-%d')
+        except Exception: pass
+    return ""
 
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17 Safari/605.1.15"
 def _get(url, headers=None, data=None, timeout=25):
@@ -34,7 +42,7 @@ def greenhouse(board, company):
         loc=(j.get("location") or {}).get("name","")
         if not (is_london(loc) and want(j.get("title",""))): continue
         out.append({"source":"gh:"+board,"company":company,"role":j["title"],"url":j.get("absolute_url",""),
-                    "location":loc,"jd":_strip(j.get("content",""))})
+                    "location":loc,"jd":_strip(j.get("content","")),"posted":(j.get("updated_at") or "")[:10]})
     return out
 def lever(board, company):
     d=_getj(f"https://api.lever.co/v0/postings/{board}?mode=json")
@@ -43,7 +51,7 @@ def lever(board, company):
         loc=(j.get("categories") or {}).get("location","")
         if not (is_london(loc) and want(j.get("text",""))): continue
         out.append({"source":"lever:"+board,"company":company,"role":j["text"],"url":j.get("hostedUrl",""),
-                    "location":loc,"jd":_strip(j.get("descriptionPlain") or j.get("description",""))})
+                    "location":loc,"jd":_strip(j.get("descriptionPlain") or j.get("description","")),"posted":_ms(j.get("createdAt"))})
     return out
 
 # ---- specific ----
@@ -55,7 +63,7 @@ def amazon():
         if j.get("country_code")!="GBR" or not is_london(j.get("city","")) or not want(j.get("title","")): continue
         out.append({"source":"amazon","company":"Amazon","role":j["title"],
                     "url":"https://www.amazon.jobs"+j.get("job_path",""),"location":j.get("city",""),
-                    "jd":_strip((j.get("description","")+" "+j.get("basic_qualifications","")))})
+                    "jd":_strip((j.get("description","")+" "+j.get("basic_qualifications",""))),"posted":j.get("posted_date","")})
     return out
 def netflix():
     out=[]
@@ -120,8 +128,10 @@ def bbc():
         link=re.search(r'<link>(.*?)</link>',it,re.S); desc=re.search(r'<description>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</description>',it,re.S)
         title=(t.group(1) if t else "").strip()
         if not (want(title) and 'london' in title.lower()): continue
+        pub=re.search(r'<pubDate>(.*?)</pubDate>',it,re.S)
         out.append({"source":"bbc","company":"BBC","role":re.sub(r'\s*\(London.*?\)','',title).strip(),
-                    "url":(link.group(1).strip() if link else ""),"location":"London","jd":_strip(desc.group(1) if desc else "")})
+                    "url":(link.group(1).strip() if link else ""),"location":"London","jd":_strip(desc.group(1) if desc else ""),
+                    "posted":_rss_date(pub.group(1)) if pub else ""})
     return out
 def itv():
     d=_getj("https://careers.itv.com/api/jobs")
@@ -167,8 +177,10 @@ def ladbible():
         link=re.search(r'<link>(.*?)</link>',it,re.S); desc=re.search(r'<description>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</description>',it,re.S)
         title=(t.group(1) if t else "").strip(); loc=(city.group(1) if city else "").strip()
         if not (is_london(loc) and want(title)): continue
+        pub=re.search(r'<pubDate>(.*?)</pubDate>',it,re.S)
         out.append({"source":"ladbible","company":"LADbible Group","role":title,
-                    "url":(link.group(1).strip() if link else ""),"location":loc,"jd":_strip(desc.group(1) if desc else "")})
+                    "url":(link.group(1).strip() if link else ""),"location":loc,"jd":_strip(desc.group(1) if desc else ""),
+                    "posted":_rss_date(pub.group(1)) if pub else ""})
     return out
 def vevo():
     for fn,arg in ((greenhouse,"vevo"),):
@@ -193,7 +205,8 @@ def scan_all():
     for name,fn in SOURCES:
         r,ok=safe(fn,name)
         if ok: ok_sources.add(name)
-        for it in r: it.setdefault("source",name)
+        for it in r:
+            it.setdefault("source",name); it.setdefault("posted","")
         print(f"  [{name}] {len(r)} London role(s)")
         roles+=r
     return roles, ok_sources

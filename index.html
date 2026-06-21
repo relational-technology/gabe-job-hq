@@ -39,6 +39,8 @@ main{padding:18px;max-width:900px;margin:0 auto}
 .badge{display:inline-block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:3px 9px;border-radius:30px;color:#fff}
 .badge.ready{background:var(--teal)}.badge.applied{background:var(--applied)}.badge.interviewing{background:var(--interviewing)}.badge.rejected{background:var(--rejected)}.badge.archived{background:#7a8787}.badge.closed{background:#7a8787}
 .new{background:var(--cyan);color:var(--deep);font-size:10px;font-weight:800;padding:3px 8px;border-radius:30px;text-transform:uppercase}
+.topright{text-align:right;white-space:nowrap}
+.pchip{font-size:11px;color:var(--grey);font-weight:600;margin-top:5px}
 .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
 .btn{border:1px solid var(--teal);color:var(--teal);background:#fff;font-weight:700;font-size:13px;padding:8px 12px;border-radius:8px;cursor:pointer}
 .btn.apply{background:var(--cyan);border-color:var(--cyan);color:#073b39}
@@ -128,24 +130,31 @@ async function dash(){
     <p class="hint">${ready} role${ready===1?'':'s'} waiting. Open <b>Jobs</b> to apply. The list refreshes automatically each day.</p>`;
 }
 const STATUSES=['ready','applied','interviewing','rejected','archived'];
-let JFILTER='active',JSORT='best';
+let JFILTER='active',JSORT='best',JREC='any';
 const fmtd=s=>{if(!s)return'';const d=new Date(String(s).replace(' ','T')+'Z');return isNaN(d)?'':d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});};
+function postedLabel(j){const raw=j.posted||j.first_seen;if(!raw)return'';const d=new Date(String(raw).replace(' ','T'));if(isNaN(d))return'';const days=Math.floor((Date.now()-d.getTime())/864e5);const t=days<=0?'today':days===1?'1 day ago':days+' days ago';return(j.posted?'Posted ':'Added ')+t;}
 const genLetter=(co,ro)=>`Dear ${co} team,\n\nI am applying for the ${ro} role. I am a senior producer with 15+ years making film, branded content and social for brands like Rolls-Royce, Vodafone, Spotify and Nike. I run work from first pitch to same-day global launch, own budgets up to 2M pounds, and keep craft high as volume scales.\n\nMost recently I produced Rolls-Royce's world-record electric-aircraft launch: 25M+ reach and 500+ press placements in 72 hours, now a permanent Science Museum exhibition. I would bring that mix of production rigour, creative judgement and calm delivery to ${co}.\n\nI would love to talk.\n\nBest,\nGabe Paoli`;
 const genDM=(co,ro)=>`Hi [NAME], quick hello. I produce film and branded content (Rolls-Royce, Vodafone, Spotify, Nike) and I have just applied for the ${ro} role at ${co}. Happy to share my reel and a one-pager. Would love to be considered.`;
 function setFilter(v){JFILTER=v;renderJobs();}
 function setSort(v){JSORT=v;renderJobs();}
+function setRec(v){JREC=v;renderJobs();}
 async function jobs(){
   document.getElementById('jobs').innerHTML=`<div class="controls">
     <select id="fsel" onchange="setFilter(this.value)"><option value="active">All active</option><option value="ready">Ready</option><option value="applied">Applied</option><option value="interviewing">Interviewing</option><option value="rejected">Rejected</option><option value="archived">Archived</option><option value="closed">Closed</option></select>
-    <select id="ssel" onchange="setSort(this.value)"><option value="best">Best fit + newest</option><option value="recent">Recent activity</option><option value="oldest">Oldest activity</option><option value="fit">Best fit</option></select>
+    <select id="rsel" onchange="setRec(this.value)"><option value="any">Any time</option><option value="24h">Posted 24h</option><option value="7d">Posted 7 days</option><option value="14d">Posted 14 days</option></select>
+    <select id="ssel" onchange="setSort(this.value)"><option value="best">then: best fit</option><option value="fit">then: fit only</option><option value="recent">then: recent activity</option><option value="oldest">then: oldest activity</option></select>
   </div><div id="joblist"></div>`;
-  document.getElementById('fsel').value=JFILTER;document.getElementById('ssel').value=JSORT;
+  document.getElementById('fsel').value=JFILTER;document.getElementById('ssel').value=JSORT;document.getElementById('rsel').value=JREC;
   await renderJobs();
 }
 async function renderJobs(){
   const where=JFILTER==='active'?"status NOT IN('archived','closed')":"status='"+JFILTER+"'";
-  const order=JSORT==='best'?"(status='ready') DESC, fit DESC, first_seen DESC":JSORT==='recent'?"updated_at DESC, first_seen DESC":JSORT==='oldest'?"updated_at ASC":"fit DESC, company";
-  const rows=await tq("SELECT *, (first_seen>(SELECT v FROM meta WHERE k='prev_run')) isnew FROM jobs WHERE "+where+" ORDER BY "+order);
+  let rows=await tq("SELECT *, (first_seen>(SELECT v FROM meta WHERE k='prev_run')) isnew FROM jobs WHERE "+where);
+  const pd=j=>new Date(String(j.posted||j.first_seen||'').replace(' ','T'));
+  if(JREC!=='any'){const days=JREC==='24h'?1:JREC==='7d'?7:14,cut=Date.now()-days*864e5;rows=rows.filter(j=>{const d=pd(j);return !isNaN(d)&&d.getTime()>=cut;});}
+  const dayKey=j=>{const d=pd(j);return isNaN(d)?0:Math.floor(d.getTime()/864e5);};
+  const sec=(a,b)=>{if(JSORT==='best'){const r=((b.status==='ready')-(a.status==='ready'));if(r)return r;return (+b.fit)-(+a.fit);}if(JSORT==='fit')return (+b.fit)-(+a.fit);if(JSORT==='recent')return new Date(b.updated_at)-new Date(a.updated_at);if(JSORT==='oldest')return new Date(a.updated_at)-new Date(b.updated_at);return 0;};
+  rows.sort((a,b)=>(dayKey(b)-dayKey(a))||sec(a,b));
   const evs=await tq("SELECT job_id,status,at FROM events ORDER BY at");
   const em={};evs.forEach(e=>{(em[e.job_id]=em[e.job_id]||[]).push(e);});
   const list=document.getElementById('joblist');list.innerHTML=rows.length?'':'<p class="muted">No jobs in this view.</p>';
@@ -157,7 +166,7 @@ async function renderJobs(){
     const tl=['<span>Found '+fmtd(j.first_seen)+'</span>'].concat((em[j.id]||[]).map(e=>'<span><b>'+e.status[0].toUpperCase()+e.status.slice(1)+'</b> '+fmtd(e.at)+'</span>'));
     if(j.status==='closed'&&j.closed_at)tl.push('<span><b>Closed</b> '+fmtd(j.closed_at)+'</span>');
     const d=document.createElement('div');d.className='card';
-    d.innerHTML=`<div class="top"><div><div class="co">${j.company}</div><div class="ro">${j.role} ${(+j.isnew)?'<span class="new">New</span>':''}</div></div><span class="fit">Fit ${(+j.fit).toFixed(0)}/10</span></div>
+    d.innerHTML=`<div class="top"><div><div class="co">${j.company}</div><div class="ro">${j.role} ${(+j.isnew)?'<span class="new">New</span>':''}</div></div><div class="topright"><span class="fit">Fit ${(+j.fit).toFixed(0)}/10</span><div class="pchip">${postedLabel(j)}</div></div></div>
       <div class="row"><span class="badge ${j.status}">${j.status}</span>
         <a class="btn apply" href="${j.url}" target="_blank">Apply -></a>
         <button class="btn cpletter" type="button">Copy cover letter</button>
