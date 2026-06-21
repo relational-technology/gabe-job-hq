@@ -130,6 +130,8 @@ async function dash(){
 const STATUSES=['ready','applied','interviewing','rejected','archived'];
 let JFILTER='active',JSORT='recent';
 const fmtd=s=>{if(!s)return'';const d=new Date(String(s).replace(' ','T')+'Z');return isNaN(d)?'':d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});};
+const genLetter=(co,ro)=>`Dear ${co} team,\n\nI am applying for the ${ro} role. I am a senior producer with 15+ years making film, branded content and social for brands like Rolls-Royce, Vodafone, Spotify and Nike. I run work from first pitch to same-day global launch, own budgets up to 2M pounds, and keep craft high as volume scales.\n\nMost recently I produced Rolls-Royce's world-record electric-aircraft launch: 25M+ reach and 500+ press placements in 72 hours, now a permanent Science Museum exhibition. I would bring that mix of production rigour, creative judgement and calm delivery to ${co}.\n\nI would love to talk.\n\nBest,\nGabe Paoli`;
+const genDM=(co,ro)=>`Hi [NAME], quick hello. I produce film and branded content (Rolls-Royce, Vodafone, Spotify, Nike) and I have just applied for the ${ro} role at ${co}. Happy to share my reel and a one-pager. Would love to be considered.`;
 function setFilter(v){JFILTER=v;renderJobs();}
 function setSort(v){JSORT=v;renderJobs();}
 async function jobs(){
@@ -149,24 +151,25 @@ async function renderJobs(){
   const list=document.getElementById('joblist');list.innerHTML=rows.length?'':'<p class="muted">No jobs in this view.</p>';
   for(const j of rows){
     let pk={};try{pk=JSON.parse(j.pack||'{}')}catch(e){}
+    const L=pk.letter||genLetter(j.company,j.role), DM=pk.dm||genDM(j.company,j.role);
     const opts=STATUSES.map(s=>`<option value="${s}" ${s===j.status?'selected':''}>${s[0].toUpperCase()+s.slice(1)}</option>`).join('');
-    const contacts=(pk.contacts||[]).map(c=>`<div class="muted">${c[0]} - ${c[1]} &nbsp; <a href="https://${(c[2]||'').replace(/^https?:\/\//,'')}" target="_blank">profile</a></div>`).join('')||`<div class="muted">${pk.recipe||''}</div>`;
+    const contacts=(pk.contacts||[]).map(c=>`<div class="muted">${c[0]} - ${c[1]} &nbsp; <a href="https://${(c[2]||'').replace(/^https?:\/\//,'')}" target="_blank">profile</a></div>`).join('')||`<div class="muted">${pk.recipe||('Search LinkedIn for the hiring manager, talent lead or head of content at '+j.company+', then send the DM above.')}</div>`;
     const tl=['<span>Found '+fmtd(j.first_seen)+'</span>'].concat((em[j.id]||[]).map(e=>'<span><b>'+e.status[0].toUpperCase()+e.status.slice(1)+'</b> '+fmtd(e.at)+'</span>'));
     if(j.status==='closed'&&j.closed_at)tl.push('<span><b>Closed</b> '+fmtd(j.closed_at)+'</span>');
     const d=document.createElement('div');d.className='card';
     d.innerHTML=`<div class="top"><div><div class="co">${j.company}</div><div class="ro">${j.role} ${(+j.isnew)?'<span class="new">New</span>':''}</div></div><span class="fit">Fit ${(+j.fit).toFixed(0)}/10</span></div>
       <div class="row"><span class="badge ${j.status}">${j.status}</span>
         <a class="btn apply" href="${j.url}" target="_blank">Apply -></a>
-        ${pk.letter?`<button class="btn cpletter" type="button">Copy cover letter</button>`:''}
-        ${pk.dm?`<button class="btn cpdm" type="button">Copy DM</button>`:''}
+        <button class="btn cpletter" type="button">Copy cover letter</button>
+        <button class="btn cpdm" type="button">Copy DM</button>
         <select class="status" onchange="setStatus('${j.id}',this.value)">${opts}</select>
       </div>
       <div class="tl">${tl.join(' &middot; ')}</div>
       <details><summary>Who to contact + how to apply</summary>${contacts}
         ${pk.steps?'<pre class="tpl">'+pk.steps.map((s,i)=>(i+1)+'. '+s.replace(/<[^>]+>/g,'')).join('\n')+'</pre>':''}
-        ${pk.letter?'<pre class="tpl">'+pk.letter+'</pre>':''}</details>`;
-    if(pk.letter){const x=d.querySelector('.cpletter');if(x)x.addEventListener('click',()=>copy(pk.letter,'Cover letter'));}
-    if(pk.dm){const x=d.querySelector('.cpdm');if(x)x.addEventListener('click',()=>copy(pk.dm,'DM'));}
+        <pre class="tpl">${L.replace(/</g,'&lt;')}</pre></details>`;
+    {const x=d.querySelector('.cpletter');x.addEventListener('click',()=>copy(L,'Cover letter'));
+     const y=d.querySelector('.cpdm');y.addEventListener('click',()=>copy(DM,'DM'));}
     list.appendChild(d);
   }
 }
