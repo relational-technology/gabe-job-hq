@@ -33,6 +33,13 @@ def T(v): return {"type":"text","value":str(v)}
 def F(v): return {"type":"float","value":float(v)}
 
 EXCLUDE=re.compile(r'interactive|technical|game|software|engineer|developer|content creator|social media|social content|website content|videographer|video editor|community manager|influencer|ugc|presenter|intern|assistant|coordinator|junior',re.I)
+# permanent / full-time only: exclude contract, freelance, fixed-term, temp, maternity/parental cover, interim, part-time
+PERM_TITLE=re.compile(r'\b(contract|freelance|fixed[ -]?term|ftc|temporary|temp|maternity|paternity|parental|interim|part[ -]?time|secondment|placement|cover)\b',re.I)
+PERM_JD=re.compile(r'fixed[ -]?term|\bftc\b|maternity cover|parental cover|paternity cover|\b\d{1,2}[ -]month (contract|ftc|fixed|cover)|this is a (contract|fixed)',re.I)
+def is_permanent(title,jd=""):
+    if PERM_TITLE.search(title or ""): return False
+    if jd and PERM_JD.search(jd): return False
+    return True
 def fit(title):
     t=title.lower()
     if EXCLUDE.search(t): return None
@@ -64,7 +71,7 @@ def fetch_jd(page, jobid):
 def scan(page):
     found={}
     for kw in KW:
-        url=f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={kw.replace(' ','%20')}&location={LOC}&f_TPR=r1209600&start=0"
+        url=f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={kw.replace(' ','%20')}&location={LOC}&f_TPR=r604800&f_JT=F&start=0"
         try:
             page.goto(url,wait_until="domcontentloaded",timeout=30000); page.wait_for_timeout(700)
             html=page.content()
@@ -78,7 +85,7 @@ def scan(page):
                 if not tt: continue
                 title=tt.group(1).strip().replace('&amp;','&')
                 f=fit(title)
-                if f is None: continue
+                if f is None or not is_permanent(title): continue
                 found[jid]={"id":"li-"+jid,"jobid":jid,"company":(cc.group(1).strip().replace('&amp;','&') if cc else ''),
                             "role":title,"fit":f,"url":f"https://www.linkedin.com/jobs/view/{jid}","posted":(dd.group(1) if dd else "")}
         except Exception as e:
@@ -116,6 +123,7 @@ def main():
     try: croles, ok_sources = companies.scan_all()
     except Exception as e: print("company scan error",str(e)[:120])
     for r in croles:
+        if not is_permanent(r["role"], r.get("jd","")): continue
         cid="co-"+r["source"]+"-"+hashlib.md5((r.get("url") or r["role"]).encode()).hexdigest()[:10]
         fitv=fit(r["role"]) or 7.0
         if r.get("jd"):

@@ -182,13 +182,17 @@ def ladbible():
                     "url":(link.group(1).strip() if link else ""),"location":loc,"jd":_strip(desc.group(1) if desc else ""),
                     "posted":_rss_date(pub.group(1)) if pub else ""})
     return out
-def vevo():
-    for fn,arg in ((greenhouse,"vevo"),):
-        try:
-            r=fn(arg,"Vevo")
-            if r is not None: return r
-        except Exception: continue
-    return []
+def vevo(): return lever("vevo","Vevo")
+def smartrecruiters(co, company):
+    d=_getj(f"https://api.smartrecruiters.com/v1/companies/{co}/postings?limit=100")
+    out=[]
+    for j in d.get("content",[]):
+        city=(j.get("location") or {}).get("city","")
+        if not (is_london(city) and want(j.get("name",""))): continue
+        out.append({"source":"sr:"+co,"company":company,"role":j["name"],
+                    "url":f"https://jobs.smartrecruiters.com/{co}/{j.get('id','')}","location":city,
+                    "jd":"","posted":(j.get("releasedDate") or "")[:10]})
+    return out
 
 SOURCES=[
  ("amazon",amazon),("netflix",netflix),("apple",apple),("snap",snap),("tiktok",tiktok),
@@ -196,9 +200,12 @@ SOURCES=[
  ("nyt",lambda: greenhouse("thenewyorktimes","The New York Times")),
  ("wk",lambda: greenhouse("wk","Wieden+Kennedy")),
  ("dept",dept),("ladbible",ladbible),("bbc",bbc),("itv",itv),("channel4",channel4),("vevo",vevo),
+ ("buzzfeed",lambda: greenhouse("buzzfeed","BuzzFeed")),
+ ("condenast",lambda: smartrecruiters("CondeNast","Conde Nast")),
 ]
 NOT_COVERED={"Meta":"aggressive bot-blocking, needs residential IP/Playwright","Pulse Films":"no careers data source exists",
-             "Google/YouTube":"internal RPC, brittle; 0 London producer roles at build time"}
+             "Google/YouTube":"internal RPC, brittle","Disney":"custom careers site, not programmatically reachable",
+             "Global":"custom careers site, not programmatically reachable"}
 
 def scan_all():
     roles=[]; ok_sources=set()
