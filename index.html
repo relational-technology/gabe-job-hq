@@ -103,7 +103,12 @@ async function tq(sql,args){
   const rr=res.response.result; return rr.rows.map(row=>{const o={};rr.cols.forEach((c,i)=>o[c.name]=row[i]&&row[i].value);return o;});
 }
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1600);}
-function copy(txt,what){navigator.clipboard.writeText(txt);toast((what||'Copied')+' copied');}
+function copy(txt,what){
+  const ok=()=>toast((what||'Copied')+' copied');
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(txt).then(ok).catch(()=>fbcopy(txt,ok));}
+  else fbcopy(txt,ok);
+}
+function fbcopy(txt,ok){const t=document.createElement('textarea');t.value=txt;t.style.position='fixed';t.style.top='0';t.style.opacity='0';document.body.appendChild(t);t.focus();t.select();let done=false;try{done=document.execCommand('copy');}catch(e){}document.body.removeChild(t);done?ok():toast('Copy failed - open the details below to select it');}
 function tab(id,btn){for(const s of['dash','jobs','docs'])document.getElementById(s).style.display=s===id?'block':'none';document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
 async function load(){await dash();await jobs();await docs();}
 async function dash(){
@@ -152,14 +157,16 @@ async function renderJobs(){
     d.innerHTML=`<div class="top"><div><div class="co">${j.company}</div><div class="ro">${j.role} ${(+j.isnew)?'<span class="new">New</span>':''}</div></div><span class="fit">Fit ${(+j.fit).toFixed(0)}/10</span></div>
       <div class="row"><span class="badge ${j.status}">${j.status}</span>
         <a class="btn apply" href="${j.url}" target="_blank">Apply -></a>
-        ${pk.letter?`<button class="btn" onclick='copy(${JSON.stringify(pk.letter)},"Cover letter")'>Copy cover letter</button>`:''}
-        ${pk.dm?`<button class="btn" onclick='copy(${JSON.stringify(pk.dm)},"DM")'>Copy DM</button>`:''}
+        ${pk.letter?`<button class="btn cpletter" type="button">Copy cover letter</button>`:''}
+        ${pk.dm?`<button class="btn cpdm" type="button">Copy DM</button>`:''}
         <select class="status" onchange="setStatus('${j.id}',this.value)">${opts}</select>
       </div>
       <div class="tl">${tl.join(' &middot; ')}</div>
       <details><summary>Who to contact + how to apply</summary>${contacts}
         ${pk.steps?'<pre class="tpl">'+pk.steps.map((s,i)=>(i+1)+'. '+s.replace(/<[^>]+>/g,'')).join('\n')+'</pre>':''}
         ${pk.letter?'<pre class="tpl">'+pk.letter+'</pre>':''}</details>`;
+    if(pk.letter){const x=d.querySelector('.cpletter');if(x)x.addEventListener('click',()=>copy(pk.letter,'Cover letter'));}
+    if(pk.dm){const x=d.querySelector('.cpdm');if(x)x.addEventListener('click',()=>copy(pk.dm,'DM'));}
     list.appendChild(d);
   }
 }
