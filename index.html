@@ -1,0 +1,168 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Gabe Paoli - Job HQ</title>
+<style>
+:root{--teal:#0E7C7B;--deep:#0c4f4d;--cyan:#16b5ab;--wash:#EAF5F3;--ink:#16242a;--grey:#5b6b6b;--line:#d3e7e4;--applied:#1f9d57;--interviewing:#c98a00;--rejected:#b23b3b;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;color:var(--ink);background:#f5faf9;font-size:15px;line-height:1.5}
+a{color:var(--teal);text-decoration:none}
+.gate{position:fixed;inset:0;background:var(--deep);display:flex;align-items:center;justify-content:center;flex-direction:column;color:#fff;z-index:50;padding:24px}
+.gate h1{font-size:30px;font-weight:800}.gate h1 .g{color:var(--cyan)}
+.gate p{color:#bfeee9;margin:8px 0 18px;font-size:14px}
+.gate input{padding:13px 16px;border-radius:10px;border:none;font-size:16px;width:min(360px,90vw)}
+.gate label{color:#bfeee9;font-size:13px;margin-top:12px;display:flex;align-items:center;gap:8px}
+.gate button{margin-top:14px;background:var(--cyan);color:var(--deep);font-weight:800;border:none;padding:13px 22px;border-radius:10px;font-size:15px;cursor:pointer}
+.gate .err{color:#ffd9d9;font-size:13px;margin-top:12px;min-height:16px}
+header{background:var(--deep);color:#fff;padding:18px 18px 0;position:sticky;top:0;z-index:10}
+header .brand{font-size:22px;font-weight:800}header .brand .g{color:var(--cyan)}
+header .sub{color:#bfeee9;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:2px}
+header .out{position:absolute;top:18px;right:18px;color:#bfeee9;font-size:12px;cursor:pointer;border:1px solid #2f6f6c;border-radius:20px;padding:4px 10px}
+nav{display:flex;gap:4px;margin-top:14px}
+nav button{background:transparent;border:none;color:#bfeee9;font-weight:700;font-size:14px;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer}
+nav button.on{background:#f5faf9;color:var(--ink)}
+main{padding:18px;max-width:900px;margin:0 auto}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+.stat{background:#fff;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:10px;padding:14px}
+.stat .n{font-size:30px;font-weight:800;color:var(--teal);line-height:1}
+.stat .l{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--grey);margin-top:6px;font-weight:700}
+.stat.applied{border-left-color:var(--applied)}.stat.applied .n{color:var(--applied)}
+.stat.interviewing{border-left-color:var(--interviewing)}.stat.interviewing .n{color:var(--interviewing)}
+.delta{margin:14px 0 4px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:14px}
+.delta .up{color:var(--applied);font-weight:800}.delta .dn{color:var(--rejected);font-weight:800}
+.hint{color:var(--grey);font-size:13px;margin:14px 0 8px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.card .co{color:var(--teal);font-weight:800;font-size:12px;letter-spacing:1px;text-transform:uppercase}
+.card .ro{font-size:17px;font-weight:800;margin-top:2px}
+.fit{background:var(--wash);color:var(--teal);font-weight:800;font-size:12px;padding:4px 9px;border-radius:30px;white-space:nowrap}
+.badge{display:inline-block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:3px 9px;border-radius:30px;color:#fff}
+.badge.ready{background:var(--teal)}.badge.applied{background:var(--applied)}.badge.interviewing{background:var(--interviewing)}.badge.rejected{background:var(--rejected)}.badge.archived{background:#7a8787}.badge.closed{background:#7a8787}
+.new{background:var(--cyan);color:var(--deep);font-size:10px;font-weight:800;padding:3px 8px;border-radius:30px;text-transform:uppercase}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+.btn{border:1px solid var(--teal);color:var(--teal);background:#fff;font-weight:700;font-size:13px;padding:8px 12px;border-radius:8px;cursor:pointer}
+.btn.apply{background:var(--cyan);border-color:var(--cyan);color:#073b39}
+select.status{font-weight:700;font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);color:var(--ink)}
+.docrow{display:block;background:#fff;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:10px;padding:12px 14px;margin-bottom:10px;font-weight:700;cursor:pointer}
+.docrow span{display:block;color:var(--grey);font-weight:400;font-size:12px;margin-top:2px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:30px;font-size:14px;opacity:0;transition:opacity .2s;z-index:30}
+.toast.show{opacity:1}
+.muted{color:var(--grey);font-size:13px}
+details{margin-top:10px}summary{cursor:pointer;color:var(--teal);font-weight:700;font-size:13px}
+pre.tpl{white-space:pre-wrap;background:var(--wash);border-radius:8px;padding:10px;font-size:12.5px;margin-top:8px;font-family:inherit}
+.closedwrap summary{color:var(--grey)}
+</style></head><body>
+<div class="gate" id="gate">
+  <h1><span class="g">Gabe</span> Paoli - Job HQ</h1>
+  <p>Enter your passphrase to unlock.</p>
+  <input id="pw" type="password" placeholder="passphrase" autocomplete="current-password">
+  <label><input type="checkbox" id="remember" checked> Keep me signed in on this device</label>
+  <button onclick="unlock()">Unlock</button>
+  <div class="err" id="err"></div>
+</div>
+<header id="hdr" style="display:none">
+  <div class="out" onclick="signout()">Sign out</div>
+  <div class="brand"><span class="g">Gabe</span> Paoli - Job HQ</div>
+  <div class="sub">Your private application HQ</div>
+  <nav><button class="on" onclick="tab('dash',this)">Dashboard</button><button onclick="tab('jobs',this)">Jobs</button><button onclick="tab('docs',this)">Documents</button></nav>
+</header>
+<main id="app" style="display:none">
+  <section id="dash"></section>
+  <section id="jobs" style="display:none"></section>
+  <section id="docs" style="display:none"></section>
+</main>
+<div class="toast" id="toast"></div>
+<script src="config.enc.js"></script>
+<script>
+let CFG=null;
+const b64d=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function decryptCfg(pw){
+  const raw=b64d(window.ENC_CONFIG),salt=raw.slice(0,16),iv=raw.slice(16,28),ct=raw.slice(28);
+  const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:window.KDF_ITER,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['decrypt']);
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+async function unlock(){
+  const pw=document.getElementById('pw').value, err=document.getElementById('err');
+  try{ CFG=await decryptCfg(pw);
+    (document.getElementById('remember').checked?localStorage:sessionStorage).setItem('cfg',JSON.stringify(CFG));
+    show();
+  }catch(e){ err.textContent='Wrong passphrase. Try again.'; }
+}
+function show(){document.getElementById('gate').style.display='none';document.getElementById('hdr').style.display='block';document.getElementById('app').style.display='block';load();}
+function signout(){localStorage.removeItem('cfg');sessionStorage.removeItem('cfg');location.hash='';location.reload();}
+async function tq(sql,args){
+  const stmt=args?{sql,args:args.map(v=>({type:typeof v==='number'?'float':'text',value:String(v)}))}:{sql};
+  const r=await fetch(CFG.url+'/v2/pipeline',{method:'POST',headers:{'Authorization':'Bearer '+CFG.token,'Content-Type':'application/json'},body:JSON.stringify({requests:[{type:'execute',stmt},{type:'close'}]})});
+  const j=await r.json(),res=j.results[0]; if(res.type!=='ok')throw new Error(JSON.stringify(j));
+  const rr=res.response.result; return rr.rows.map(row=>{const o={};rr.cols.forEach((c,i)=>o[c.name]=row[i]&&row[i].value);return o;});
+}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1600);}
+function copy(txt,what){navigator.clipboard.writeText(txt);toast((what||'Copied')+' copied');}
+function tab(id,btn){for(const s of['dash','jobs','docs'])document.getElementById(s).style.display=s===id?'block':'none';document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
+async function load(){await dash();await jobs();await docs();}
+async function dash(){
+  const rows=await tq("SELECT status,count(*) c FROM jobs WHERE status!='archived' GROUP BY status");
+  const m={};rows.forEach(r=>m[r.status]=+r.c);
+  const d=(await tq("SELECT (SELECT count(*) FROM jobs WHERE first_seen>(SELECT v FROM meta WHERE k='prev_run')) nw,(SELECT count(*) FROM jobs WHERE closed_at>(SELECT v FROM meta WHERE k='prev_run')) cl,(SELECT v FROM meta WHERE k='last_run') lr"))[0];
+  const ready=m.ready||0,applied=m.applied||0,inter=m.interviewing||0;
+  const lr=(d.lr||'').replace('T',' ').slice(0,16);
+  document.getElementById('dash').innerHTML=
+   `<div class="stats">
+      <div class="stat"><div class="n">${ready}</div><div class="l">Ready to apply</div></div>
+      <div class="stat applied"><div class="n">${applied}</div><div class="l">Applied</div></div>
+      <div class="stat interviewing"><div class="n">${inter}</div><div class="l">Interviewing</div></div>
+      <div class="stat"><div class="n">${+d.nw||0}</div><div class="l">New (last refresh)</div></div>
+    </div>
+    <div class="delta">Since the last refresh: <span class="up">+${+d.nw||0} new</span> &nbsp; <span class="dn">-${+d.cl||0} closed</span>${lr?` &nbsp;<span class="muted">(updated ${lr})</span>`:''}</div>
+    <p class="hint">${ready} role${ready===1?'':'s'} waiting. Open <b>Jobs</b> to apply. The list refreshes automatically each day.</p>`;
+}
+const STATUSES=['ready','applied','interviewing','rejected','archived'];
+async function jobs(){
+  const rows=await tq("SELECT *, (first_seen>(SELECT v FROM meta WHERE k='prev_run')) isnew FROM jobs WHERE status NOT IN('closed','archived') ORDER BY (status='applied'), fit DESC, company");
+  const closed=await tq("SELECT company,role,closed_at FROM jobs WHERE status='closed' ORDER BY closed_at DESC LIMIT 25");
+  const el=document.getElementById('jobs');el.innerHTML=rows.length?'':'<p class="muted">No live roles right now. Check back after the daily refresh.</p>';
+  for(const j of rows){
+    let pk={};try{pk=JSON.parse(j.pack||'{}')}catch(e){}
+    const opts=STATUSES.map(s=>`<option value="${s}" ${s===j.status?'selected':''}>${s[0].toUpperCase()+s.slice(1)}</option>`).join('');
+    const contacts=(pk.contacts||[]).map(c=>`<div class="muted">${c[0]} - ${c[1]} &nbsp; <a href="https://${(c[2]||'').replace(/^https?:\/\//,'')}" target="_blank">profile</a></div>`).join('')||`<div class="muted">${pk.recipe||''}</div>`;
+    const d=document.createElement('div');d.className='card';
+    d.innerHTML=`<div class="top"><div><div class="co">${j.company}</div><div class="ro">${j.role} ${(+j.isnew)?'<span class="new">New</span>':''}</div></div><span class="fit">Fit ${(+j.fit).toFixed(0)}/10</span></div>
+      <div class="row"><span class="badge ${j.status}">${j.status}</span>
+        <a class="btn apply" href="${j.url}" target="_blank">Apply -></a>
+        ${pk.letter?`<button class="btn" onclick='copy(${JSON.stringify(pk.letter)},"Cover letter")'>Copy cover letter</button>`:''}
+        ${pk.dm?`<button class="btn" onclick='copy(${JSON.stringify(pk.dm)},"DM")'>Copy DM</button>`:''}
+        <select class="status" onchange="setStatus('${j.id}',this.value)">${opts}</select>
+      </div>
+      <details><summary>Who to contact + how to apply</summary>${contacts}
+        ${pk.steps?'<pre class="tpl">'+pk.steps.map((s,i)=>(i+1)+'. '+s.replace(/<[^>]+>/g,'')).join('\n')+'</pre>':''}
+        ${pk.letter?'<pre class="tpl">'+pk.letter+'</pre>':''}</details>`;
+    el.appendChild(d);
+  }
+  if(closed.length){const w=document.createElement('div');w.className='closedwrap';
+    w.innerHTML='<details><summary>Recently closed ('+closed.length+')</summary>'+closed.map(c=>`<div class="muted">${c.company} - ${c.role} <span class="badge closed">closed</span> ${(c.closed_at||'').slice(0,10)}</div>`).join('')+'</details>';
+    el.appendChild(w);}
+}
+async function setStatus(id,st){await tq("UPDATE jobs SET status=?,updated_at=datetime('now'),applied_at=CASE WHEN ?='applied' THEN datetime('now') ELSE applied_at END WHERE id=?",[st,st,id]);toast('Saved: '+st);dash();jobs();}
+async function docs(){
+  const rows=await tq("SELECT id,name,descr,mime FROM docs ORDER BY rowid");
+  document.getElementById('docs').innerHTML='<p class="hint">Your latest documents (private, stored encrypted). Tap to download. Use the ATS .docx for portals; branded PDFs for humans.</p>'+
+    rows.map(r=>`<div class="docrow" onclick="getdoc('${r.id}','${r.name.replace(/'/g,"")}','${r.mime}')">${r.name}<span>${r.descr||''}</span></div>`).join('');
+}
+async function getdoc(id,name,mime){
+  toast('Fetching...');
+  const r=(await tq("SELECT b64 FROM docs WHERE id=?",[id]))[0];
+  const bytes=b64d(r.b64);const blob=new Blob([bytes],{type:mime});
+  const ext=mime.includes('word')?'.docx':'.pdf';
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name.replace(/[^a-z0-9]+/gi,'-')+ext;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+// boot: localStorage (remembered) -> sessionStorage -> #key= in URL
+(function(){
+  const saved=localStorage.getItem('cfg')||sessionStorage.getItem('cfg');
+  if(saved){CFG=JSON.parse(saved);show();return;}
+  const h=new URLSearchParams(location.hash.slice(1));const k=h.get('key')||h.get('k');
+  if(k){decryptCfg(k).then(c=>{CFG=c;localStorage.setItem('cfg',JSON.stringify(c));history.replaceState(null,'',location.pathname);show();}).catch(()=>{});}
+})();
+document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')unlock();});
+</script></body></html>

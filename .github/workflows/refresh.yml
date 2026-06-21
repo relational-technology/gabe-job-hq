@@ -1,0 +1,21 @@
+name: Daily job refresh
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 06:00 UTC (~07:00 London) daily
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -r requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - name: Scan and update Turso
+        env:
+          TURSO_TOKEN: ${{ secrets.TURSO_TOKEN }}
+          TURSO_DB: ${{ secrets.TURSO_DB }}
+        run: python refresh_jobs.py
