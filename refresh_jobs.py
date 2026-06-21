@@ -29,7 +29,7 @@ def tq(sql,args=None):
 def T(v): return {"type":"text","value":str(v)}
 def F(v): return {"type":"float","value":float(v)}
 
-EXCLUDE=re.compile(r'interactive|technical|game|software|engineer|developer|content creator|social media (manager|creator)|community manager',re.I)
+EXCLUDE=re.compile(r'interactive|technical|game|software|engineer|developer|content creator|social media|social content|website content|videographer|video editor|community manager|influencer|ugc|presenter|intern|assistant|coordinator|junior',re.I)
 def fit(title):
     t=title.lower()
     if EXCLUDE.search(t): return None

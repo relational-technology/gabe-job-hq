@@ -9,8 +9,9 @@ a{color:var(--teal);text-decoration:none}
 .gate{position:fixed;inset:0;background:var(--deep);display:flex;align-items:center;justify-content:center;flex-direction:column;color:#fff;z-index:50;padding:24px}
 .gate h1{font-size:30px;font-weight:800}.gate h1 .g{color:var(--cyan)}
 .gate p{color:#bfeee9;margin:8px 0 18px;font-size:14px}
-.gate input{padding:13px 16px;border-radius:10px;border:none;font-size:16px;width:min(360px,90vw)}
-.gate label{color:#bfeee9;font-size:13px;margin-top:12px;display:flex;align-items:center;gap:8px}
+.gate input#pw{padding:13px 16px;border-radius:10px;border:none;font-size:16px;width:min(360px,90vw)}
+.gate label{color:#bfeee9;font-size:13px;margin-top:12px;display:flex;align-items:center;gap:8px;width:min(360px,90vw)}
+.gate label input{flex:0 0 auto;width:auto;margin:0}
 .gate button{margin-top:14px;background:var(--cyan);color:var(--deep);font-weight:800;border:none;padding:13px 22px;border-radius:10px;font-size:15px;cursor:pointer}
 .gate .err{color:#ffd9d9;font-size:13px;margin-top:12px;min-height:16px}
 header{background:var(--deep);color:#fff;padding:18px 18px 0;position:sticky;top:0;z-index:10}
