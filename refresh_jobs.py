@@ -27,7 +27,7 @@ def tq(sql,args=None):
     rr=res["response"]["result"]
     return [{c["name"]:(row[i] and row[i]["value"]) for i,c in enumerate(rr["cols"])} for row in rr["rows"]]
 def T(v): return {"type":"text","value":str(v)}
-def F(v): return {"type":"float","value":str(v)}
+def F(v): return {"type":"float","value":float(v)}
 
 EXCLUDE=re.compile(r'interactive|technical|game|software|engineer|developer|content creator|social media (manager|creator)|community manager',re.I)
 def fit(title):
