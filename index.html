@@ -128,7 +128,7 @@ async function dash(){
     <p class="hint">${ready} role${ready===1?'':'s'} waiting. Open <b>Jobs</b> to apply. The list refreshes automatically each day.</p>`;
 }
 const STATUSES=['ready','applied','interviewing','rejected','archived'];
-let JFILTER='active',JSORT='recent';
+let JFILTER='active',JSORT='best';
 const fmtd=s=>{if(!s)return'';const d=new Date(String(s).replace(' ','T')+'Z');return isNaN(d)?'':d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});};
 const genLetter=(co,ro)=>`Dear ${co} team,\n\nI am applying for the ${ro} role. I am a senior producer with 15+ years making film, branded content and social for brands like Rolls-Royce, Vodafone, Spotify and Nike. I run work from first pitch to same-day global launch, own budgets up to 2M pounds, and keep craft high as volume scales.\n\nMost recently I produced Rolls-Royce's world-record electric-aircraft launch: 25M+ reach and 500+ press placements in 72 hours, now a permanent Science Museum exhibition. I would bring that mix of production rigour, creative judgement and calm delivery to ${co}.\n\nI would love to talk.\n\nBest,\nGabe Paoli`;
 const genDM=(co,ro)=>`Hi [NAME], quick hello. I produce film and branded content (Rolls-Royce, Vodafone, Spotify, Nike) and I have just applied for the ${ro} role at ${co}. Happy to share my reel and a one-pager. Would love to be considered.`;
@@ -137,14 +137,14 @@ function setSort(v){JSORT=v;renderJobs();}
 async function jobs(){
   document.getElementById('jobs').innerHTML=`<div class="controls">
     <select id="fsel" onchange="setFilter(this.value)"><option value="active">All active</option><option value="ready">Ready</option><option value="applied">Applied</option><option value="interviewing">Interviewing</option><option value="rejected">Rejected</option><option value="archived">Archived</option><option value="closed">Closed</option></select>
-    <select id="ssel" onchange="setSort(this.value)"><option value="recent">Recent activity</option><option value="oldest">Oldest activity</option><option value="fit">Best fit</option></select>
+    <select id="ssel" onchange="setSort(this.value)"><option value="best">Best fit + newest</option><option value="recent">Recent activity</option><option value="oldest">Oldest activity</option><option value="fit">Best fit</option></select>
   </div><div id="joblist"></div>`;
   document.getElementById('fsel').value=JFILTER;document.getElementById('ssel').value=JSORT;
   await renderJobs();
 }
 async function renderJobs(){
   const where=JFILTER==='active'?"status NOT IN('archived','closed')":"status='"+JFILTER+"'";
-  const order=JSORT==='recent'?"updated_at DESC, first_seen DESC":JSORT==='oldest'?"updated_at ASC":"fit DESC, company";
+  const order=JSORT==='best'?"(status='ready') DESC, fit DESC, first_seen DESC":JSORT==='recent'?"updated_at DESC, first_seen DESC":JSORT==='oldest'?"updated_at ASC":"fit DESC, company";
   const rows=await tq("SELECT *, (first_seen>(SELECT v FROM meta WHERE k='prev_run')) isnew FROM jobs WHERE "+where+" ORDER BY "+order);
   const evs=await tq("SELECT job_id,status,at FROM events ORDER BY at");
   const em={};evs.forEach(e=>{(em[e.job_id]=em[e.job_id]||[]).push(e);});

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Daily refresher: scan the LinkedIn public guest jobs feed for London producer roles,
-upsert new ones into Turso, mark vanished auto-listings as closed, and roll the run
-timestamps so the portal can show +new / -closed. Reads TURSO_TOKEN / TURSO_DB from env
-(GitHub Actions secrets) or ~/.aura-ops-secrets locally. No em dashes in stored text."""
-import os, re, json, urllib.request
+generate a BESPOKE cover letter + DM per new role (Claude, from the real job description),
+upsert into Turso, mark vanished auto-listings as closed, and roll run timestamps so the
+portal shows +new / -closed. Reads TURSO_* and ANTHROPIC_API_KEY from env (GitHub Actions
+secrets) or ~/.aura-ops-secrets locally. No em dashes in any stored text."""
+import os, re, json, time, urllib.request
 from playwright.sync_api import sync_playwright
 
 def cred(k):
@@ -15,6 +16,8 @@ def cred(k):
     except Exception: return ""
 TOKEN=cred("TURSO_TOKEN"); EP=re.sub(r'^(libsql|wss)://','https://',cred("TURSO_DB"))
 if not EP.startswith("http"): EP="https://"+EP
+ANTHROPIC_KEY=cred("ANTHROPIC_API_KEY"); MODEL=os.environ.get("LETTER_MODEL","claude-sonnet-4-6")
+GEN_LIMIT=int(os.environ.get("GEN_LIMIT","40"))  # cap bespoke generations per run (cost guard)
 
 def tq(sql,args=None):
     stmt={"sql":sql}
@@ -25,7 +28,7 @@ def tq(sql,args=None):
     res=json.loads(urllib.request.urlopen(r).read())["results"][0]
     if res["type"]!="ok": raise RuntimeError(json.dumps(res)[:200])
     rr=res["response"]["result"]
-    return [{c["name"]:(row[i] and row[i]["value"]) for i,c in enumerate(rr["cols"])} for row in rr["rows"]]
+    return [{c["name"]:(row[i].get("value") if isinstance(row[i],dict) else row[i]) for i,c in enumerate(rr["cols"])} for row in rr["rows"]]
 def T(v): return {"type":"text","value":str(v)}
 def F(v): return {"type":"float","value":float(v)}
 
@@ -41,49 +44,109 @@ def fit(title):
     if 'content producer' in t or 'video producer' in t: return 6.5
     if 'producer' in t: return 6.0
     return None
-def slug(s): return re.sub(r'[^a-z0-9]+','-',s.lower()).strip('-')[:60]
 
 UA=("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17 Safari/605.1.15")
 KW=["Senior Producer","Creative Producer","Executive Producer","Branded Content Producer","Content Producer"]
 LOC="London%2C%20England%2C%20United%20Kingdom"
-def scan():
+
+PROFILE=("Gabe Paoli, senior producer, 15+ years. Senior Producer and Deputy Head of Film at IDX (Investcorp), London. "
+ "Flagship: produced Rolls-Royce 'Spirit of Innovation', the world-record all-electric aircraft launch: 25M+ reach, "
+ "500+ press placements in 72 hours, now a permanent Science Museum exhibition. Brands: Vodafone, Spotify, Nike, Bvlgari, Vogue. "
+ "Budgets up to 2M pounds; 500+ campaigns delivered; grew client revenue 700%+. Runs work from first pitch to same-day global "
+ "launch across production, creative, marketing and AI tooling. Right to work UK and EU, no sponsorship needed. London-based.")
+
+def fetch_jd(page, jobid):
+    try:
+        page.goto(f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{jobid}",wait_until="domcontentloaded",timeout=20000)
+        page.wait_for_timeout(400)
+        html=page.content()
+        m=re.search(r'show-more-less-html__markup[^>]*>(.*?)</div>',html,re.S)
+        txt=re.sub(r'<[^>]+>',' ',m.group(1)) if m else re.sub(r'<[^>]+>',' ',html)
+        txt=re.sub(r'\s+',' ',txt).strip()
+        return txt[:2500]
+    except Exception as e:
+        print("jd warn",jobid,str(e)[:50]); return ""
+
+def gen_pack(company, role, jd):
+    """Bespoke cover letter + DM via Claude. Raises on failure (caller falls back)."""
+    if not ANTHROPIC_KEY: raise RuntimeError("no ANTHROPIC_API_KEY")
+    sys_p=("You write job application materials for Gabe Paoli. Write in his voice: confident, warm, specific, "
+      "British English. Use absolutely NO em dashes (use commas or full stops). Do not invent facts beyond the profile. "
+      "Reference one or two concrete details from the job description so it reads bespoke. Return ONLY valid JSON.")
+    usr=(f"PROFILE: {PROFILE}\n\nROLE: {role} at {company}\n\nJOB DESCRIPTION:\n{jd or '(not available; use the role title and company)'}\n\n"
+      "Return JSON exactly: {\"letter\": \"...\", \"dm\": \"...\"}. "
+      "letter: 150 to 200 words, begins 'Dear "+company+" team,', ties Gabe's experience to this role, ends 'Best,\\nGabe Paoli'. "
+      "dm: 40 to 60 words, begins 'Hi [NAME],', mentions the "+role+" role, offers reel and a one-pager.")
+    body=json.dumps({"model":MODEL,"max_tokens":900,"system":sys_p,
+      "messages":[{"role":"user","content":usr}]}).encode()
+    r=urllib.request.Request("https://api.anthropic.com/v1/messages",data=body,
+      headers={"x-api-key":ANTHROPIC_KEY,"anthropic-version":"2023-06-01","content-type":"application/json"})
+    out=json.loads(urllib.request.urlopen(r,timeout=60).read())
+    text="".join(b.get("text","") for b in out.get("content",[]))
+    m=re.search(r'\{.*\}',text,re.S)
+    pack=json.loads(m.group(0) if m else text)
+    pack={"letter":pack["letter"].replace("—","-").replace("–","-"),
+          "dm":pack["dm"].replace("—","-").replace("–","-"),
+          "contacts":[], "recipe":f"Search LinkedIn for the hiring manager, talent lead or head of content at {company}, then send the DM above."}
+    return pack
+
+def scan(page):
     found={}
-    with sync_playwright() as p:
-        b=p.chromium.launch(); ctx=b.new_context(user_agent=UA); pg=ctx.new_page()
-        for kw in KW:
-            url=f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={kw.replace(' ','%20')}&location={LOC}&f_TPR=r1209600&start=0"
-            try:
-                pg.goto(url,wait_until="domcontentloaded",timeout=30000); pg.wait_for_timeout(700)
-                html=pg.content()
-                for jid,title,company,locn in re.findall(r'data-entity-urn="urn:li:jobPosting:(\d+)".*?base-search-card__title">\s*([^<]+?)\s*</h3>.*?subtitle">\s*<a[^>]*>\s*([^<]+?)\s*</a>.*?location">\s*([^<]+?)\s*</span>',html,re.S):
-                    f=fit(title)
-                    if f is None: continue
-                    found[jid]={"id":"li-"+jid,"company":company.strip().replace('&amp;','&'),"role":title.strip().replace('&amp;','&'),
-                                "fit":f,"url":f"https://www.linkedin.com/jobs/view/{jid}"}
-            except Exception as e:
-                print("scan warn",kw,str(e)[:60])
-        b.close()
+    for kw in KW:
+        url=f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={kw.replace(' ','%20')}&location={LOC}&f_TPR=r1209600&start=0"
+        try:
+            page.goto(url,wait_until="domcontentloaded",timeout=30000); page.wait_for_timeout(700)
+            html=page.content()
+            for jid,title,company,locn in re.findall(r'data-entity-urn="urn:li:jobPosting:(\d+)".*?base-search-card__title">\s*([^<]+?)\s*</h3>.*?subtitle">\s*<a[^>]*>\s*([^<]+?)\s*</a>.*?location">\s*([^<]+?)\s*</span>',html,re.S):
+                f=fit(title)
+                if f is None: continue
+                found[jid]={"id":"li-"+jid,"jobid":jid,"company":company.strip().replace('&amp;','&'),
+                            "role":title.strip().replace('&amp;','&'),"fit":f,"url":f"https://www.linkedin.com/jobs/view/{jid}"}
+        except Exception as e:
+            print("scan warn",kw,str(e)[:60])
     return list(found.values())
 
 def main():
-    # roll run timestamps
+    # which jobs already have a (bespoke) pack, so we never overwrite or pay twice
+    existing={r["id"]:(r.get("pack") or "") for r in tq("SELECT id, pack FROM jobs")}
     tq("INSERT INTO meta(k,v) VALUES('prev_run',(SELECT v FROM meta WHERE k='last_run')) ON CONFLICT(k) DO UPDATE SET v=(SELECT v FROM meta WHERE k='last_run')")
     tq("UPDATE meta SET v=datetime('now') WHERE k='last_run'")
-    rolesnow=scan()
-    print("scanned roles:",len(rolesnow))
-    for r in rolesnow:
-        tq("INSERT INTO jobs(id,company,role,fit,url,status,source,first_seen,last_seen) VALUES(?,?,?,?,?,'ready','linkedin',datetime('now'),datetime('now')) "
-           "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, "
-           "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
-           [T(r["id"]),T(r["company"]),T(r["role"]),F(r["fit"]),T(r["url"])])
-    # only reconcile-close if the scan clearly worked (avoid false closures when LinkedIn blocks the runner)
+    with sync_playwright() as p:
+        b=p.chromium.launch(); ctx=b.new_context(user_agent=UA); page=ctx.new_page()
+        rolesnow=scan(page); print("scanned roles:",len(rolesnow))
+        gen=0
+        for r in rolesnow:
+            cur=existing.get(r["id"],"__new__")
+            has_pack = cur not in ("","__new__")
+            pack=None
+            if not has_pack and gen<GEN_LIMIT:
+                jd=fetch_jd(page,r["jobid"])
+                try:
+                    pack=gen_pack(r["company"],r["role"],jd); gen+=1
+                    print(f"  bespoke pack: {r['company']} - {r['role']}")
+                    time.sleep(0.4)
+                except Exception as e:
+                    print("  gen warn",r["company"],str(e)[:80]); pack=None
+            if pack is not None:
+                tq("INSERT INTO jobs(id,company,role,fit,url,status,source,pack,first_seen,last_seen) "
+                   "VALUES(?,?,?,?,?,'ready','linkedin',?,datetime('now'),datetime('now')) "
+                   "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, pack=excluded.pack, "
+                   "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
+                   [T(r["id"]),T(r["company"]),T(r["role"]),F(r["fit"]),T(r["url"]),T(json.dumps(pack))])
+            else:
+                tq("INSERT INTO jobs(id,company,role,fit,url,status,source,first_seen,last_seen) "
+                   "VALUES(?,?,?,?,?,'ready','linkedin',datetime('now'),datetime('now')) "
+                   "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, "
+                   "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
+                   [T(r["id"]),T(r["company"]),T(r["role"]),F(r["fit"]),T(r["url"])])
+        b.close()
     if len(rolesnow)>=5:
         tq("UPDATE jobs SET status='closed', closed_at=datetime('now') "
            "WHERE source='linkedin' AND status NOT IN('applied','interviewing','rejected','archived','closed') "
            "AND last_seen < (SELECT v FROM meta WHERE k='last_run')")
     else:
         print("scan returned few results; skipping close-reconciliation this run")
-    n=tq("SELECT count(*) c FROM jobs WHERE status NOT IN('closed','archived')")[0]["c"]
-    print("active jobs now:",n)
+    print("bespoke packs generated this run:",gen)
+    print("active jobs now:",tq("SELECT count(*) c FROM jobs WHERE status NOT IN('closed','archived')")[0]["c"])
 
 if __name__=="__main__": main()
