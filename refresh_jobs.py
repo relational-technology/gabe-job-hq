@@ -5,8 +5,9 @@ vanished auto-listings as closed, and roll run timestamps so the portal shows +n
 Bespoke cover letters are written separately by the daily Anthropic Cloud routine, which
 reads the stored job descriptions. Reads TURSO_TOKEN / TURSO_DB from env or ~/.aura-ops-secrets.
 No em dashes in stored text."""
-import os, re, json, urllib.request
+import os, re, json, hashlib, urllib.request
 from playwright.sync_api import sync_playwright
+import companies
 
 def cred(k):
     v=os.environ.get(k)
@@ -102,12 +103,33 @@ def main():
                    "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
                    [T(r["id"]),T(r["company"]),T(r["role"]),F(r["fit"]),T(r["url"])])
         b.close()
-    if len(rolesnow)>=5:
-        tq("UPDATE jobs SET status='closed', closed_at=datetime('now') "
-           "WHERE source='linkedin' AND status NOT IN('applied','interviewing','rejected','archived','closed') "
+    # target companies (incl big tech) via verified careers endpoints (urllib, no browser)
+    ok_sources=set(); croles=[]
+    try: croles, ok_sources = companies.scan_all()
+    except Exception as e: print("company scan error",str(e)[:120])
+    for r in croles:
+        cid="co-"+r["source"]+"-"+hashlib.md5((r.get("url") or r["role"]).encode()).hexdigest()[:10]
+        fitv=fit(r["role"]) or 7.0
+        if r.get("jd"):
+            tq("INSERT INTO jobs(id,company,role,fit,url,status,source,jd,first_seen,last_seen) VALUES(?,?,?,?,?,'ready',?,?,datetime('now'),datetime('now')) "
+               "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, jd=excluded.jd, "
+               "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
+               [T(cid),T(r["company"]),T(r["role"]),F(fitv),T(r["url"]),T(r["source"]),T(r["jd"])])
+        else:
+            tq("INSERT INTO jobs(id,company,role,fit,url,status,source,first_seen,last_seen) VALUES(?,?,?,?,?,'ready',?,datetime('now'),datetime('now')) "
+               "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, "
+               "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
+               [T(cid),T(r["company"]),T(r["role"]),F(fitv),T(r["url"]),T(r["source"])])
+    # reconcile: close vanished roles only for sources that actually responded this run
+    reconc=set(ok_sources)
+    if len(rolesnow)>=5: reconc.add("linkedin")
+    if reconc:
+        inlist=",".join("'"+s.replace("'","")+"'" for s in reconc)
+        tq("UPDATE jobs SET status='closed', closed_at=datetime('now') WHERE source IN ("+inlist+") "
+           "AND status NOT IN('applied','interviewing','rejected','archived','closed') "
            "AND last_seen < (SELECT v FROM meta WHERE k='last_run')")
-    else:
-        print("scan returned few results; skipping close-reconciliation this run")
+    print("target-company roles found:",len(croles),"| sources ok:",len(ok_sources),
+          "| not covered:",", ".join(companies.NOT_COVERED))
     print("job descriptions fetched this run:",fetched)
     print("active jobs now:",tq("SELECT count(*) c FROM jobs WHERE status NOT IN('closed','archived')")[0]["c"])
 

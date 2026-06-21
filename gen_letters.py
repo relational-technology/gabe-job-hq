@@ -53,13 +53,18 @@ def gen_batch(rows):
     for r in rows:
         lines.append(f"- id: {r['id']}\n  company: {r['company']}\n  role: {r['role']}\n  description: {(r.get('jd') or '')[:1800]}")
     prompt=("Do not use any tools, web search or file access. Work only from the text provided below.\n\n"
-      "You write bespoke job application materials for "+PROFILE+"\n\n"
-      "For EACH role below, write a tailored cover letter and a short LinkedIn DM, grounded in that role's description. "
+      "You assess fit and write bespoke job application materials for "+PROFILE+"\n\n"
+      "For EACH role below: score how well it suits Gabe, then write a tailored cover letter and a short LinkedIn DM, "
+      "grounded in that role's description (if a description is missing, use the title and company). "
       "Use British English and absolutely NO em dashes (use commas or full stops).\n"
       "Return ONLY a JSON array, one object per role, no prose around it:\n"
-      '[{"id":"<id>","letter":"<letter>","dm":"<dm>"}]\n'
-      "letter: 150 to 200 words, begins 'Dear <company> team,', references one or two concrete details from the description, "
-      "ends with 'Best,' then a newline then 'Gabe Paoli'.\n"
+      '[{"id":"<id>","fit":<integer 1-10>,"rationale":"<one short sentence>","letter":"<letter>","dm":"<dm>"}]\n'
+      "fit: integer 1 to 10 for how well the role suits Gabe (a senior producer of film, branded content and social at scale, "
+      "budgets to 2M pounds, big-brand and big-tech level). Score senior or lead or executive producer, head of film/content/production, "
+      "and branded content or experiential producer roles HIGH (8-10). Score mid roles 6-7. Score junior, purely social-media, or "
+      "off-discipline roles LOW (1-4). Be honest and discriminating, do not give everything 8.\n"
+      "rationale: one short sentence on why it fits or does not.\n"
+      "letter: 150 to 200 words, begins 'Dear <company> team,', references one or two concrete details, ends with 'Best,' then a newline then 'Gabe Paoli'.\n"
       "dm: 40 to 60 words, begins 'Hi [NAME],', names the <role> role, offers to share his reel and a one-pager.\n\n"
       "ROLES:\n"+"\n".join(lines))
     out=claude(prompt)
@@ -70,14 +75,17 @@ def gen_batch(rows):
         if not o or not o.get("letter"): print("  miss",r["company"]); continue
         pack={"letter":clean(o["letter"]),"dm":clean(o.get("dm","")),"contacts":[],
               "recipe":f"Search LinkedIn for the hiring manager, talent lead or head of content at {r['company']}, then send the DM above."}
-        tq("UPDATE jobs SET pack=?, updated_at=datetime('now') WHERE id=?",
-           [{"type":"text","value":json.dumps(pack)},{"type":"text","value":r["id"]}])
-        n+=1; print(f"  wrote: {r['company']} - {r['role']}")
+        try: fitv=max(1.0,min(10.0,float(o.get("fit") or 7)))
+        except Exception: fitv=7.0
+        tq("UPDATE jobs SET fit=?, notes=?, pack=?, updated_at=datetime('now') WHERE id=?",
+           [{"type":"float","value":fitv},{"type":"text","value":clean(o.get("rationale",""))},
+            {"type":"text","value":json.dumps(pack)},{"type":"text","value":r["id"]}])
+        n+=1; print(f"  wrote: {r['company']} - {r['role']} (fit {fitv:.0f})")
     return n
 
 def main():
-    pending=tq("SELECT id,company,role,jd FROM jobs WHERE source='linkedin' AND (pack IS NULL OR pack='') "
-               "AND jd IS NOT NULL AND jd!='' ORDER BY fit DESC LIMIT "+str(MAX_ROLES))
+    pending=tq("SELECT id,company,role,jd FROM jobs WHERE (pack IS NULL OR pack='') "
+               "AND status NOT IN('closed','archived') ORDER BY fit DESC LIMIT "+str(MAX_ROLES))
     print("roles needing a bespoke letter:",len(pending))
     total=0
     for i in range(0,len(pending),BATCH):
