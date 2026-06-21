@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Daily refresher: scan the LinkedIn public guest jobs feed for London producer roles,
-generate a BESPOKE cover letter + DM per new role (Claude, from the real job description),
-upsert into Turso, mark vanished auto-listings as closed, and roll run timestamps so the
-portal shows +new / -closed. Reads TURSO_* and ANTHROPIC_API_KEY from env (GitHub Actions
-secrets) or ~/.aura-ops-secrets locally. No em dashes in any stored text."""
-import os, re, json, time, urllib.request
+"""Daily scanner (free, runs in GitHub Actions): pull the LinkedIn public guest jobs feed
+for London producer roles, store each role PLUS its job-description text in Turso, mark
+vanished auto-listings as closed, and roll run timestamps so the portal shows +new/-closed.
+Bespoke cover letters are written separately by the daily Anthropic Cloud routine, which
+reads the stored job descriptions. Reads TURSO_TOKEN / TURSO_DB from env or ~/.aura-ops-secrets.
+No em dashes in stored text."""
+import os, re, json, urllib.request
 from playwright.sync_api import sync_playwright
 
 def cred(k):
@@ -16,8 +17,6 @@ def cred(k):
     except Exception: return ""
 TOKEN=cred("TURSO_TOKEN"); EP=re.sub(r'^(libsql|wss)://','https://',cred("TURSO_DB"))
 if not EP.startswith("http"): EP="https://"+EP
-ANTHROPIC_KEY=cred("ANTHROPIC_API_KEY"); MODEL=os.environ.get("LETTER_MODEL","claude-sonnet-4-6")
-GEN_LIMIT=int(os.environ.get("GEN_LIMIT","40"))  # cap bespoke generations per run (cost guard)
 
 def tq(sql,args=None):
     stmt={"sql":sql}
@@ -49,46 +48,17 @@ UA=("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML
 KW=["Senior Producer","Creative Producer","Executive Producer","Branded Content Producer","Content Producer"]
 LOC="London%2C%20England%2C%20United%20Kingdom"
 
-PROFILE=("Gabe Paoli, senior producer, 15+ years. Senior Producer and Deputy Head of Film at IDX (Investcorp), London. "
- "Flagship: produced Rolls-Royce 'Spirit of Innovation', the world-record all-electric aircraft launch: 25M+ reach, "
- "500+ press placements in 72 hours, now a permanent Science Museum exhibition. Brands: Vodafone, Spotify, Nike, Bvlgari, Vogue. "
- "Budgets up to 2M pounds; 500+ campaigns delivered; grew client revenue 700%+. Runs work from first pitch to same-day global "
- "launch across production, creative, marketing and AI tooling. Right to work UK and EU, no sponsorship needed. London-based.")
-
 def fetch_jd(page, jobid):
     try:
         page.goto(f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{jobid}",wait_until="domcontentloaded",timeout=20000)
         page.wait_for_timeout(400)
         html=page.content()
         m=re.search(r'show-more-less-html__markup[^>]*>(.*?)</div>',html,re.S)
-        txt=re.sub(r'<[^>]+>',' ',m.group(1)) if m else re.sub(r'<[^>]+>',' ',html)
-        txt=re.sub(r'\s+',' ',txt).strip()
-        return txt[:2500]
+        txt=re.sub(r'<[^>]+>',' ',m.group(1)) if m else ''
+        txt=re.sub(r'\s+',' ',txt).strip().replace('—','-').replace('–','-')
+        return txt[:3000]
     except Exception as e:
         print("jd warn",jobid,str(e)[:50]); return ""
-
-def gen_pack(company, role, jd):
-    """Bespoke cover letter + DM via Claude. Raises on failure (caller falls back)."""
-    if not ANTHROPIC_KEY: raise RuntimeError("no ANTHROPIC_API_KEY")
-    sys_p=("You write job application materials for Gabe Paoli. Write in his voice: confident, warm, specific, "
-      "British English. Use absolutely NO em dashes (use commas or full stops). Do not invent facts beyond the profile. "
-      "Reference one or two concrete details from the job description so it reads bespoke. Return ONLY valid JSON.")
-    usr=(f"PROFILE: {PROFILE}\n\nROLE: {role} at {company}\n\nJOB DESCRIPTION:\n{jd or '(not available; use the role title and company)'}\n\n"
-      "Return JSON exactly: {\"letter\": \"...\", \"dm\": \"...\"}. "
-      "letter: 150 to 200 words, begins 'Dear "+company+" team,', ties Gabe's experience to this role, ends 'Best,\\nGabe Paoli'. "
-      "dm: 40 to 60 words, begins 'Hi [NAME],', mentions the "+role+" role, offers reel and a one-pager.")
-    body=json.dumps({"model":MODEL,"max_tokens":900,"system":sys_p,
-      "messages":[{"role":"user","content":usr}]}).encode()
-    r=urllib.request.Request("https://api.anthropic.com/v1/messages",data=body,
-      headers={"x-api-key":ANTHROPIC_KEY,"anthropic-version":"2023-06-01","content-type":"application/json"})
-    out=json.loads(urllib.request.urlopen(r,timeout=60).read())
-    text="".join(b.get("text","") for b in out.get("content",[]))
-    m=re.search(r'\{.*\}',text,re.S)
-    pack=json.loads(m.group(0) if m else text)
-    pack={"letter":pack["letter"].replace("—","-").replace("–","-"),
-          "dm":pack["dm"].replace("—","-").replace("–","-"),
-          "contacts":[], "recipe":f"Search LinkedIn for the hiring manager, talent lead or head of content at {company}, then send the DM above."}
-    return pack
 
 def scan(page):
     found={}
@@ -107,32 +77,24 @@ def scan(page):
     return list(found.values())
 
 def main():
-    # which jobs already have a (bespoke) pack, so we never overwrite or pay twice
-    existing={r["id"]:(r.get("pack") or "") for r in tq("SELECT id, pack FROM jobs")}
+    have_jd={r["id"] for r in tq("SELECT id FROM jobs WHERE jd IS NOT NULL AND jd!=''")}
     tq("INSERT INTO meta(k,v) VALUES('prev_run',(SELECT v FROM meta WHERE k='last_run')) ON CONFLICT(k) DO UPDATE SET v=(SELECT v FROM meta WHERE k='last_run')")
     tq("UPDATE meta SET v=datetime('now') WHERE k='last_run'")
     with sync_playwright() as p:
         b=p.chromium.launch(); ctx=b.new_context(user_agent=UA); page=ctx.new_page()
         rolesnow=scan(page); print("scanned roles:",len(rolesnow))
-        gen=0
+        fetched=0
         for r in rolesnow:
-            cur=existing.get(r["id"],"__new__")
-            has_pack = cur not in ("","__new__")
-            pack=None
-            if not has_pack and gen<GEN_LIMIT:
-                jd=fetch_jd(page,r["jobid"])
-                try:
-                    pack=gen_pack(r["company"],r["role"],jd); gen+=1
-                    print(f"  bespoke pack: {r['company']} - {r['role']}")
-                    time.sleep(0.4)
-                except Exception as e:
-                    print("  gen warn",r["company"],str(e)[:80]); pack=None
-            if pack is not None:
-                tq("INSERT INTO jobs(id,company,role,fit,url,status,source,pack,first_seen,last_seen) "
+            jd=""
+            if r["id"] not in have_jd:
+                jd=fetch_jd(page,r["jobid"]);
+                if jd: fetched+=1
+            if jd:
+                tq("INSERT INTO jobs(id,company,role,fit,url,status,source,jd,first_seen,last_seen) "
                    "VALUES(?,?,?,?,?,'ready','linkedin',?,datetime('now'),datetime('now')) "
-                   "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, pack=excluded.pack, "
+                   "ON CONFLICT(id) DO UPDATE SET last_seen=datetime('now'), role=excluded.role, company=excluded.company, jd=excluded.jd, "
                    "status=CASE WHEN jobs.status='closed' THEN 'ready' ELSE jobs.status END, closed_at=CASE WHEN jobs.status='closed' THEN NULL ELSE jobs.closed_at END",
-                   [T(r["id"]),T(r["company"]),T(r["role"]),F(r["fit"]),T(r["url"]),T(json.dumps(pack))])
+                   [T(r["id"]),T(r["company"]),T(r["role"]),F(r["fit"]),T(r["url"]),T(jd)])
             else:
                 tq("INSERT INTO jobs(id,company,role,fit,url,status,source,first_seen,last_seen) "
                    "VALUES(?,?,?,?,?,'ready','linkedin',datetime('now'),datetime('now')) "
@@ -146,7 +108,7 @@ def main():
            "AND last_seen < (SELECT v FROM meta WHERE k='last_run')")
     else:
         print("scan returned few results; skipping close-reconciliation this run")
-    print("bespoke packs generated this run:",gen)
+    print("job descriptions fetched this run:",fetched)
     print("active jobs now:",tq("SELECT count(*) c FROM jobs WHERE status NOT IN('closed','archived')")[0]["c"])
 
 if __name__=="__main__": main()
