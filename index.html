@@ -86,6 +86,7 @@ pre.tpl{white-space:pre-wrap;background:var(--wash);border-radius:8px;padding:10
   <section id="docs" style="display:none"></section>
 </main>
 <div class="toast" id="toast"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="config.enc.js"></script>
 <script>
 let CFG=null;
@@ -119,6 +120,15 @@ function copy(txt,what){
   else fbcopy(txt,ok);
 }
 function coverPDF(company,letter){
+  const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  if(!window.html2pdf)return coverPrint(company,letter);
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;left:-9999px;top:0;width:210mm;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#1c2b30;font-size:11pt;line-height:1.55';
+  el.innerHTML='<div style="background:#0E7C7B;color:#fff;padding:16mm 18mm 11mm"><div style="font-size:23pt;font-weight:700">Gabe Paoli</div><div style="font-size:8.4pt;letter-spacing:2.8px;color:#bdeae6;font-weight:700;margin-top:4px">SENIOR PRODUCER</div><div style="color:#eaf6f5;font-size:9pt;margin-top:7px">London, UK &bull; gabepaoli@gmail.com &bull; linkedin.com/in/gabrielepaoli &bull; gabrielepaoli.com/work</div></div><div style="padding:13mm 18mm;white-space:pre-wrap">'+esc(letter)+'</div>';
+  document.body.appendChild(el); toast('Building PDF...');
+  html2pdf().set({margin:0,filename:'Gabe-Paoli-Cover-Letter-'+company.replace(/[^a-z0-9]+/gi,'-')+'.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(el).save().then(()=>{el.remove();toast('Cover letter PDF saved');}).catch(()=>{el.remove();coverPrint(company,letter);});
+}
+function coverPrint(company,letter){
   const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const w=window.open('','_blank');
   if(!w){toast('Allow pop-ups to save the PDF');return;}
