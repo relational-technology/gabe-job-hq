@@ -118,6 +118,26 @@ function copy(txt,what){
   if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(txt).then(ok).catch(()=>fbcopy(txt,ok));}
   else fbcopy(txt,ok);
 }
+function coverPDF(company,letter){
+  const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const w=window.open('','_blank');
+  if(!w){toast('Allow pop-ups to save the PDF');return;}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cover letter - ${esc(company)}</title><style>
+  @page{size:A4;margin:0}*{margin:0;box-sizing:border-box}
+  body{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;color:#1c2b30;font-size:11pt;line-height:1.55}
+  .banner{background:#0E7C7B;color:#fff;padding:16mm 18mm 11mm}
+  .name{font-size:23pt;font-weight:700;letter-spacing:.3px}
+  .sub{font-size:8.4pt;letter-spacing:2.8px;color:#bdeae6;font-weight:700;margin-top:4px}
+  .contact{color:#eaf6f5;font-size:9pt;margin-top:7px}
+  .body{padding:13mm 18mm;white-space:pre-wrap}
+  .hint{position:fixed;top:8px;right:10px;font:12px Arial;color:#0E7C7B}@media print{.hint{display:none}}
+  </style></head><body>
+  <div class="hint">Use your browser Print dialog, then choose Save as PDF.</div>
+  <div class="banner"><div class="name">Gabe Paoli</div><div class="sub">SENIOR PRODUCER</div>
+  <div class="contact">London, UK &nbsp;&bull;&nbsp; gabepaoli@gmail.com &nbsp;&bull;&nbsp; linkedin.com/in/gabrielepaoli &nbsp;&bull;&nbsp; gabrielepaoli.com/work</div></div>
+  <div class="body">${esc(letter)}</div></body></html>`);
+  w.document.close(); w.focus(); setTimeout(()=>{try{w.print();}catch(e){}},400);
+}
 function fbcopy(txt,ok){const t=document.createElement('textarea');t.value=txt;t.style.position='fixed';t.style.top='0';t.style.opacity='0';document.body.appendChild(t);t.focus();t.select();let done=false;try{done=document.execCommand('copy');}catch(e){}document.body.removeChild(t);done?ok():toast('Copy failed - open the details below to select it');}
 function tab(id,btn){for(const s of['dash','jobs','docs'])document.getElementById(s).style.display=s===id?'block':'none';document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
 async function load(){await dash();await jobs();await docs();}
@@ -193,6 +213,7 @@ async function renderJobs(){
       <div class="row"><span class="badge ${j.status}">${j.status}</span>
         <a class="btn apply" href="${j.url}" target="_blank">Apply -></a>
         <button class="btn cpletter" type="button">Copy cover letter</button>
+        <button class="btn cvletterpdf" type="button">Cover letter PDF</button>
         <button class="btn cpdm" type="button">Copy DM</button>
         <select class="status" onchange="setStatus('${j.id}',this.value)">${opts}</select>
       </div>
@@ -202,7 +223,8 @@ async function renderJobs(){
         <pre class="tpl">${L.replace(/</g,'&lt;')}</pre></details>`;
     {const x=d.querySelector('.cpletter');x.addEventListener('click',()=>copy(L,'Cover letter'));
      const y=d.querySelector('.cpdm');y.addEventListener('click',()=>copy(DM,'DM'));
-     const z=d.querySelector('.cvget');if(z)z.addEventListener('click',()=>dlCV(cvFor(j.company)));}
+     const z=d.querySelector('.cvget');if(z)z.addEventListener('click',()=>dlCV(cvFor(j.company)));
+     const cl=d.querySelector('.cvletterpdf');if(cl)cl.addEventListener('click',()=>coverPDF(j.company,L));}
     list.appendChild(d);
   }
 }
