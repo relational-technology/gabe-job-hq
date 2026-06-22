@@ -59,7 +59,9 @@ def gen_batch(rows):
       "grounded in that role's description (if a description is missing, use the title and company). "
       "Use British English and absolutely NO em dashes (use commas or full stops).\n"
       "Return ONLY a JSON array, one object per role, no prose around it:\n"
-      '[{"id":"<id>","fit":<integer 1-10>,"rationale":"<one short sentence>","letter":"<letter>","dm":"<dm>"}]\n'
+      '[{"id":"<id>","fit":<integer 1-10>,"rationale":"<one short sentence>","salary":"<band>","letter":"<letter>","dm":"<dm>"}]\n'
+      "salary: if the description states a salary, return it exactly (e.g. £55,000 - £65,000). If not, give your best estimate of the "
+      "London market band for this role and seniority, formatted like 'est. £60k - £75k'. Keep it short.\n"
       "fit: integer 1 to 10 for how well the role suits Gabe (a senior producer of film, branded content and social at scale, "
       "budgets to 2M pounds, big-brand and big-tech level). Score senior or lead or executive producer, head of film/content/production, "
       "and branded content or experiential producer roles HIGH (8-10). Score mid roles 6-7. Score junior, purely social-media, or "
@@ -78,9 +80,10 @@ def gen_batch(rows):
               "recipe":f"Search LinkedIn for the hiring manager, talent lead or head of content at {r['company']}, then send the DM above."}
         try: fitv=max(1.0,min(10.0,float(o.get("fit") or 7)))
         except Exception: fitv=7.0
-        tq("UPDATE jobs SET fit=?, notes=?, pack=?, updated_at=datetime('now') WHERE id=?",
+        sal=clean(o.get("salary","")).replace('–','-')[:40]
+        tq("UPDATE jobs SET fit=?, notes=?, pack=?, salary=COALESCE(NULLIF(salary,''),?), updated_at=datetime('now') WHERE id=?",
            [{"type":"float","value":fitv},{"type":"text","value":clean(o.get("rationale",""))},
-            {"type":"text","value":json.dumps(pack)},{"type":"text","value":r["id"]}])
+            {"type":"text","value":json.dumps(pack)},{"type":"text","value":sal},{"type":"text","value":r["id"]}])
         n+=1; print(f"  wrote: {r['company']} - {r['role']} (fit {fitv:.0f})")
     return n
 
