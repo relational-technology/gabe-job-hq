@@ -197,7 +197,7 @@ async function jobs(){
   await renderJobs();
 }
 async function renderJobs(){
-  const where=JFILTER==='active'?"status NOT IN('archived','closed')":"status='"+JFILTER+"'";
+  const where=JFILTER==='active'?"status NOT IN('archived','closed','dismissed')":"status='"+JFILTER+"'";
   let rows=await tq("SELECT *, (first_seen>(SELECT v FROM meta WHERE k='prev_run')) isnew FROM jobs WHERE "+where);
   const pd=j=>new Date(String(j.posted||j.first_seen||'').replace(' ','T'));
   if(JREC!=='any'){const days=JREC==='24h'?1:JREC==='7d'?7:14,cut=Date.now()-days*864e5;rows=rows.filter(j=>{const d=pd(j);return !isNaN(d)&&d.getTime()>=cut;});}
@@ -226,6 +226,7 @@ async function renderJobs(){
         <button class="btn cvletterpdf" type="button">Cover letter PDF</button>
         <button class="btn cpdm" type="button">Copy DM</button>
         <select class="status" onchange="setStatus('${j.id}',this.value)">${opts}</select>
+        <button class="btn notrel" type="button">Not relevant</button>
       </div>
       <div class="tl">${tl.join(' &middot; ')}</div>
       <details><summary>Who to contact + how to apply</summary>${contacts}
@@ -236,11 +237,19 @@ async function renderJobs(){
      const z=d.querySelector('.cvget');if(z)z.addEventListener('click',()=>dlCV(cvFor(j.company)));
      const cl=d.querySelector('.cvletterpdf');if(cl)cl.addEventListener('click',()=>coverPDF(j.company,L));
      const tp=d.querySelector('.tlrpdf');if(tp)tp.addEventListener('click',()=>getTailored(j.id,'pdf',j.company));
-     const td=d.querySelector('.tlrdocx');if(td)td.addEventListener('click',()=>getTailored(j.id,'docx',j.company));}
+     const td=d.querySelector('.tlrdocx');if(td)td.addEventListener('click',()=>getTailored(j.id,'docx',j.company));
+     const nr=d.querySelector('.notrel');if(nr)nr.addEventListener('click',()=>dismiss(j.id,j.company));}
     list.appendChild(d);
   }
 }
 async function setStatus(id,st){await tq("UPDATE jobs SET status=?,updated_at=datetime('now'),applied_at=CASE WHEN ?='applied' THEN datetime('now') ELSE applied_at END WHERE id=?",[st,st,id]);await tq("INSERT INTO events(job_id,status,at) VALUES(?,?,datetime('now'))",[id,st]);toast('Saved: '+st);dash();renderJobs();}
+async function dismiss(id,company){
+  const r=prompt('Mark "'+company+'" as not relevant. Why? (a few words helps Claude stop suggesting similar roles)','');
+  if(r===null)return;
+  await tq("UPDATE jobs SET status='dismissed', feedback=?, updated_at=datetime('now') WHERE id=?",[r||'not relevant',id]);
+  await tq("INSERT INTO events(job_id,status,at) VALUES(?,?,datetime('now'))",[id,'dismissed']);
+  toast('Marked not relevant'); dash(); renderJobs();
+}
 async function docs(){
   const rows=await tq("SELECT id,name,descr,mime FROM docs ORDER BY rowid");
   document.getElementById('docs').innerHTML='<p class="hint">Your latest documents (private, stored encrypted). Tap to download. Use the ATS .docx for portals; branded PDFs for humans.</p>'+

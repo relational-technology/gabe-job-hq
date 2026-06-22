@@ -49,7 +49,7 @@ def claude(prompt):
 
 def clean(s): return str(s).replace("—","-").replace("–","-")
 
-def gen_batch(rows):
+def gen_batch(rows,dismissed=""):
     lines=[]
     for r in rows:
         lines.append(f"- id: {r['id']}\n  company: {r['company']}\n  role: {r['role']}\n  description: {(r.get('jd') or '')[:1800]}")
@@ -68,7 +68,8 @@ def gen_batch(rows):
       "off-discipline roles LOW (1-4). Be honest and discriminating, do not give everything 8.\n"
       "rationale: one short sentence on why it fits or does not.\n"
       "letter: 150 to 200 words, begins 'Dear <company> team,', references one or two concrete details, ends with 'Best,' then a newline then 'Gabe Paoli'.\n"
-      "dm: 40 to 60 words, begins 'Hi [NAME],', names the <role> role, offers to share his reel and a one-pager.\n\n"
+      "dm: 40 to 60 words, begins 'Hi [NAME],', names the <role> role, offers to share his reel and a one-pager.\n"
+      +dismissed+"\n"
       "ROLES:\n"+"\n".join(lines))
     out=claude(prompt)
     by={o["id"]:o for o in out if isinstance(o,dict) and "id" in o}
@@ -89,12 +90,15 @@ def gen_batch(rows):
 
 def main():
     pending=tq("SELECT id,company,role,jd FROM jobs WHERE (pack IS NULL OR pack='') "
-               "AND status NOT IN('closed','archived') ORDER BY fit DESC LIMIT "+str(MAX_ROLES))
+               "AND status NOT IN('closed','archived','dismissed') ORDER BY fit DESC LIMIT "+str(MAX_ROLES))
     print("roles needing a bespoke letter:",len(pending))
+    drows=tq("SELECT role, company, feedback FROM jobs WHERE status='dismissed' AND feedback IS NOT NULL AND feedback!='' ORDER BY updated_at DESC LIMIT 25")
+    dismissed=("\nGabe marked these as NOT RELEVANT. Score any new role that is similar in type, discipline or seniority LOW "
+               "(1 to 3) and say briefly why it does not fit:\n"+"\n".join(f"- {clean(r['role'])} at {clean(r['company'])}: {clean(r['feedback'])}" for r in drows)) if drows else ""
     total=0
     for i in range(0,len(pending),BATCH):
         batch=pending[i:i+BATCH]; print(f"batch {i//BATCH+1} ({len(batch)} roles)...")
-        try: total+=gen_batch(batch)
+        try: total+=gen_batch(batch,dismissed)
         except Exception as e: print("  batch warn:",str(e)[:160])
     print("bespoke letters written:",total)
     print("still pending:",tq("SELECT count(*) c FROM jobs WHERE source='linkedin' AND (pack IS NULL OR pack='') AND jd IS NOT NULL AND jd!=''")[0]["c"])
